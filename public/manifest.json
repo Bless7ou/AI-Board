@@ -1,0 +1,22 @@
+{
+  "name": "ChemBoard - 화학 판서 시뮬레이터",
+  "short_name": "ChemBoard",
+  "description": "화학 판서를 인식하여 자동으로 분자 구조 및 반응 시뮬레이션을 생성하는 교육용 앱",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0c14",
+  "theme_color": "#0a0c14",
+  "orientation": "landscape",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
