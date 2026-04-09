@@ -85,61 +85,92 @@ export function parseChemistry(rawText: string): ParseResult {
   };
 }
 
-function parseReaction(text: string, _reactantStr: string, _productStr: string): ParseResult {
+function parseReaction(text: string, reactantStr: string, productStr: string): ParseResult {
   const equation = text;
 
-  // 연소 반응
-  if (text.includes('O2') || text.includes('O₂')) {
-    if (text.includes('CO2') || text.includes('H2O')) {
-      return {
-        type: 'reaction',
-        raw: text,
-        reaction: {
-          equation,
-          reactants: [],
-          products: [],
-          type: 'combustion',
-          description: '연소 반응',
-        },
-        description: '연소 반응 애니메이션',
-      };
-    }
-  }
-
-  // 중화 반응
-  if ((text.includes('HCl') || text.includes('H2SO4') || text.includes('HNO3')) &&
-      (text.includes('NaOH') || text.includes('KOH') || text.includes('Ca(OH)'))) {
+  // ① 연소 반응: O₂ 포함 + 생성물에 CO₂ 또는 H₂O
+  if ((text.includes('O2') || text.includes('O₂')) &&
+      (text.includes('CO2') || text.includes('CO₂') || text.includes('H2O') || text.includes('H₂O'))) {
     return {
       type: 'reaction',
       raw: text,
-      reaction: {
-        equation,
-        reactants: [],
-        products: [],
-        type: 'neutralization',
-        description: '산염기 중화 반응',
-      },
+      reaction: { equation, reactants: [], products: [], type: 'combustion', description: '연소 반응' },
+      description: '연소 반응 애니메이션',
+    };
+  }
+
+  // ② 중화 반응: 산 + 염기
+  const isAcid = text.includes('HCl') || text.includes('H2SO4') || text.includes('HNO3') ||
+                 text.includes('H₂SO₄') || text.includes('HNO₃') || text.includes('CH3COOH');
+  const isBase = text.includes('NaOH') || text.includes('KOH') || text.includes('Ca(OH)') ||
+                 text.includes('NH3') || text.includes('NH₃');
+  if (isAcid && isBase) {
+    return {
+      type: 'reaction',
+      raw: text,
+      reaction: { equation, reactants: [], products: [], type: 'neutralization', description: '산염기 중화 반응' },
       description: '중화 반응: H⁺ + OH⁻ → H₂O',
     };
   }
 
-  // 기본 반응식
+// ③ 산화환원 반응: 금속 + 이온 포함
+  const redoxMetals = ['Zn', 'Fe', 'Cu', 'Mg', 'Al', 'Na', 'K'];
+  const hasRedoxMetal = redoxMetals.some(m => text.includes(m));
+  const hasIon = text.includes('SO4') || text.includes('NO3') || text.includes('Cl2') ||
+                 text.includes('Cl₂') || text.includes('F2') || text.includes('Br2');
+  if (hasRedoxMetal && hasIon) {
+    return {
+      type: 'reaction',
+      raw: text,
+      reaction: { equation, reactants: [], products: [], type: 'redox', description: '산화환원 반응' },
+      description: '산화환원 반응: 전자 이동',
+    };
+  }
+
+  // ④ 이중치환(앙금 생성): 생성물에 ↓ 포함 또는 난용성 염
+  const precipitates = ['AgCl', 'BaSO4', 'PbSO4', 'CaCO3', 'BaCO3', 'PbCl'];
+  const hasPrecipitate = precipitates.some(p => text.includes(p)) || text.includes('↓');
+  if (hasPrecipitate) {
+    return {
+      type: 'reaction',
+      raw: text,
+      reaction: { equation, reactants: [], products: [], type: 'double_displacement', description: '이중치환(앙금 생성) 반응' },
+      description: '이중치환 반응: 앙금 생성',
+    };
+  }
+
+  // ⑤ 분해 반응: 반응물 1개, 생성물 2개 이상
+  const reactantParts = reactantStr.split('+').map(s => s.trim()).filter(Boolean);
+  const productParts = productStr.split('+').map(s => s.trim()).filter(Boolean);
+  if (reactantParts.length === 1 && productParts.length >= 2) {
+    return {
+      type: 'reaction',
+      raw: text,
+      reaction: { equation, reactants: [], products: [], type: 'decomposition', description: '분해 반응' },
+      description: '분해 반응: 한 물질이 두 가지 이상으로 분해',
+    };
+  }
+
+  // ⑥ 합성 반응: 반응물 2개 이상, 생성물 1개
+  if (reactantParts.length >= 2 && productParts.length === 1) {
+    return {
+      type: 'reaction',
+      raw: text,
+      reaction: { equation, reactants: [], products: [], type: 'synthesis', description: '합성 반응' },
+      description: '합성 반응: 두 물질이 결합하여 하나로',
+    };
+  }
+
+  // ⑦ 기본 반응식
   return {
     type: 'reaction',
     raw: text,
-    reaction: {
-      equation,
-      reactants: [],
-      products: [],
-      type: 'synthesis',
-      description: '화학 반응',
-    },
+    reaction: { equation, reactants: [], products: [], type: 'synthesis', description: '화학 반응' },
     description: `반응식: ${equation}`,
   };
 }
 
 function parseKeyword(text: string, keyword: string, target: string): ParseResult {
-  // 전용 시뮬레이션 컴포넌트 사용 (sim:* 접두사)
   if (target === 'sim:ionic_bond') {
     return { type: 'ionic_bond', raw: text, keyword, description: '이온결합 형성 과정 (Na → Na⁺ + e⁻, Cl + e⁻ → Cl⁻)' };
   }
@@ -152,7 +183,35 @@ function parseKeyword(text: string, keyword: string, target: string): ParseResul
   if (target === 'sim:acid_base') {
     return { type: 'acid_base', raw: text, keyword, description: '산염기 중화 반응: H⁺ + OH⁻ → H₂O' };
   }
-
+  if (target === 'sim:synthesis') {
+    return {
+      type: 'reaction', raw: text, keyword,
+      reaction: { equation: 'N₂ + 3H₂ → 2NH₃', reactants: [], products: [], type: 'synthesis', description: '합성 반응' },
+      description: '합성 반응: N₂ + 3H₂ → 2NH₃ (하버법)',
+    };
+  }
+  if (target === 'sim:decomposition') {
+    return {
+      type: 'reaction', raw: text, keyword,
+      reaction: { equation: '2H₂O → 2H₂ + O₂', reactants: [], products: [], type: 'decomposition', description: '분해 반응' },
+      description: '분해 반응: 2H₂O → 2H₂ + O₂ (전기분해)',
+    };
+  }
+  if (target === 'sim:double_displacement') {
+    return {
+      type: 'reaction', raw: text, keyword,
+      reaction: { equation: 'AgNO₃ + NaCl → AgCl↓ + NaNO₃', reactants: [], products: [], type: 'double_displacement', description: '이중치환 반응' },
+      description: '이중치환 반응: AgNO₃ + NaCl → AgCl↓ + NaNO₃',
+    };
+  }
+  if (target === 'sim:combustion') {
+    return {
+      type: 'reaction', raw: text, keyword,
+      reaction: { equation: 'CH₄ + 2O₂ → CO₂ + 2H₂O', reactants: [], products: [], type: 'combustion', description: '연소 반응' },
+      description: '연소 반응: CH₄ + 2O₂ → CO₂ + 2H₂O',
+    };
+  }
+  
   // 나머지는 PubChem 화학식으로 조회
   return {
     type: 'molecule',

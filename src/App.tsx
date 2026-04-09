@@ -398,7 +398,7 @@ const TYPE_LABEL: Record<string, string> = {
   acid_base: '산염기', redox: '산화환원', unknown: '기타',
 };
 
-function SummaryModal({ items, onClose }: { items: AssistantItem[]; onClose: () => void }) {
+export function SummaryModal({ items, onClose }: { items: AssistantItem[]; onClose: () => void }) {
   const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
 
   const molecules  = [...new Set(items.filter(i => i.type === 'molecule').map(i => i.clean))];
