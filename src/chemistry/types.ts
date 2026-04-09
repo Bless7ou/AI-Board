@@ -41,6 +41,14 @@ export interface ReactionData {
   description: string;
 }
 
+export interface IonicPair {
+  cation: string;
+  anion: string;
+  cationCharge: number;
+  anionCharge: number;
+  transfer: number;
+}
+
 export interface ParseResult {
   type: SimulationType;
   raw: string;
@@ -49,5 +57,6 @@ export interface ParseResult {
   reaction?: ReactionData;
   element?: string;
   keyword?: string;
+  ionicPair?: IonicPair;
   description: string;
 }

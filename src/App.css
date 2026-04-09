@@ -67,73 +67,87 @@ html, body, #root {
 }
 .btn-icon:hover { background: rgba(80,120,200,0.15); }
 
-/* ===== 메인 (분할 화면) ===== */
+/* ===== 메인 (좌우 분할 화면) ===== */
 .main {
   display: flex;
+  flex-direction: row;
   flex: 1;
   overflow: hidden;
-  gap: 0;
 }
 
-.panel {
+/* 캔버스: 전체 화면 */
+.canvas-area {
+  position: relative;
+  flex: 1;
   display: flex;
   flex-direction: column;
+  background: #0a0d18;
   overflow: hidden;
+}
+
+.canvas-area canvas {
   flex: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
-.panel-left {
-  border-right: 2px solid rgba(60,100,160,0.3);
-  background: #0d1220;
-}
-.panel-right {
-  background: #0a0f1a;
-}
-
-.panel-title {
+/* 플로팅 패널 공통 */
+.float-panel {
+  position: absolute;
+  right: 12px;
+  width: 340px;
+  background: rgba(4, 8, 20, 0.55);   /* 반투명 — 캔버스가 비쳐 보임 */
+  border: 1px solid rgba(60, 120, 220, 0.25);
+  border-radius: 12px;
+  backdrop-filter: blur(18px);          /* 뒤 판서가 흐릿하게 비침 */
+  -webkit-backdrop-filter: blur(18px);
+  overflow: hidden;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #5577aa;
-  background: rgba(10,20,40,0.6);
-  border-bottom: 1px solid rgba(40,70,120,0.25);
+  flex-direction: column;
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.35);
+}
+
+.float-sim {
+  top: 12px;
+  height: 52%;
+}
+
+.float-assist {
+  bottom: 12px;
+  height: 42%;
+}
+
+.float-panel-title {
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #3a5a88;
+  background: rgba(6, 14, 36, 0.5);
+  border-bottom: 1px solid rgba(40, 70, 130, 0.2);
   flex-shrink: 0;
-  gap: 8px;
-  min-height: 30px;
 }
 
-.ocr-result {
-  font-size: 10px;
+.float-panel-body {
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* 인식 결과 뱃지 (캔버스 위 좌상단 오버레이) */
+.canvas-ocr-badge {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  z-index: 5;
+  background: rgba(10,30,60,0.75);
+  border: 1px solid rgba(60,120,200,0.3);
+  border-radius: 8px;
+  padding: 3px 10px;
+  font-size: 11px;
   color: #4488bb;
-  font-weight: 400;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 160px;
-}
-.sim-desc {
-  font-size: 10px;
-  color: #3a7a5a;
-  font-weight: 400;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 200px;
-}
-
-.canvas-wrap {
-  flex: 1;
-  overflow: hidden;
-  position: relative;
-}
-
-.sim-wrap {
-  flex: 1;
-  overflow: hidden;
-  position: relative;
+  pointer-events: none;
+  backdrop-filter: blur(6px);
 }
 
 /* ===== 도구 모음 ===== */
@@ -197,11 +211,12 @@ html, body, #root {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 6px 12px;
+  padding: 5px 10px;
   background: rgba(8,15,28,0.95);
   border-top: 1px solid rgba(40,70,120,0.3);
   flex-shrink: 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
   min-height: 46px;
 }
 
@@ -254,6 +269,32 @@ html, body, #root {
 .ctrl-btn.clear:hover {
   background: rgba(120,50,30,0.3);
   color: #ffaa88;
+}
+.ctrl-btn.partial {
+  color: #aaddaa;
+  border-color: rgba(80,180,80,0.35);
+}
+.ctrl-btn.partial:hover:not(:disabled) {
+  background: rgba(60,160,60,0.2);
+  color: #ccffcc;
+}
+.ctrl-btn.partial.active {
+  background: rgba(60,180,60,0.25);
+  color: #88ff88;
+  border-color: rgba(80,200,80,0.6);
+}
+.ctrl-btn.search {
+  color: #ffcc66;
+  border-color: rgba(200,160,40,0.4);
+}
+.ctrl-btn.search:hover:not(:disabled) {
+  background: rgba(180,140,30,0.2);
+  color: #ffdd88;
+}
+.ctrl-btn.search.active {
+  background: rgba(180,140,30,0.25);
+  border-color: rgba(220,180,60,0.6);
+  color: #ffee99;
 }
 
 .ctrl-divider {
@@ -414,9 +455,9 @@ html, body, #root {
 
 /* ===== iPad / 모바일 반응형 ===== */
 @media (max-width: 768px) {
-  .main { flex-direction: column; }
-  .panel-left { border-right: none; border-bottom: 2px solid rgba(60,100,160,0.3); }
-  .panel { flex: 1; min-height: 0; }
+  .float-panel { width: 200px; }
+  .float-sim { height: 44%; }
+  .float-assist { height: 36%; }
   .logo { font-size: 15px; }
   .subtitle { display: none; }
   .ctrl-btn { padding: 5px 9px; font-size: 12px; }

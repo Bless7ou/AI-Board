@@ -1,5 +1,4 @@
 import type { ParseResult } from '../chemistry/types';
-import MoleculeViewer from './MoleculeViewer';
 import PubChemViewer from './PubChemViewer';
 import IonicBondSim from './IonicBondSim';
 import CovalentBondSim from './CovalentBondSim';
@@ -20,9 +19,6 @@ export default function SimulationPanel({ result, playing, speed }: Props) {
 
   switch (result.type) {
     case 'molecule':
-      if (result.molecule) {
-        return <MoleculeViewer molecule={result.molecule} playing={playing} speed={speed} />;
-      }
       if (result.formula) {
         return <PubChemViewer formula={result.formula} playing={playing} speed={speed} />;
       }

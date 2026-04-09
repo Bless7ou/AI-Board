@@ -8,6 +8,8 @@ interface Props {
 
 export interface DrawingCanvasHandle {
   getImageDataURL: () => string;
+  /** 화면 좌표 기준으로 캔버스 일부를 잘라 dataURL 반환 */
+  getCroppedImageDataURL: (x: number, y: number, w: number, h: number, displayW: number, displayH: number) => string;
   clear: () => void;
 }
 
@@ -141,6 +143,21 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(
         const canvas = canvasRef.current;
         if (!canvas) return '';
         return canvas.toDataURL('image/png');
+      },
+      getCroppedImageDataURL: (x, y, w, h, displayW, displayH) => {
+        const canvas = canvasRef.current;
+        if (!canvas) return '';
+        const scaleX = canvas.width  / displayW;
+        const scaleY = canvas.height / displayH;
+        const cx = Math.round(x * scaleX);
+        const cy = Math.round(y * scaleY);
+        const cw = Math.round(w * scaleX);
+        const ch = Math.round(h * scaleY);
+        const tmp = document.createElement('canvas');
+        tmp.width = cw;
+        tmp.height = ch;
+        tmp.getContext('2d')!.drawImage(canvas, cx, cy, cw, ch, 0, 0, cw, ch);
+        return tmp.toDataURL('image/png');
       },
       clear: () => {
         const canvas = canvasRef.current;
