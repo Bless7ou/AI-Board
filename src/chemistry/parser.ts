@@ -139,62 +139,26 @@ function parseReaction(text: string, _reactantStr: string, _productStr: string):
 }
 
 function parseKeyword(text: string, keyword: string, target: string): ParseResult {
-  if (keyword === '이온결합') {
-    return {
-      type: 'ionic_bond',
-      raw: text,
-      keyword,
-      description: '이온결합 형성 과정 (Na → Na⁺ + e⁻, Cl + e⁻ → Cl⁻)',
-    };
+  // 전용 시뮬레이션 컴포넌트 사용 (sim:* 접두사)
+  if (target === 'sim:ionic_bond') {
+    return { type: 'ionic_bond', raw: text, keyword, description: '이온결합 형성 과정 (Na → Na⁺ + e⁻, Cl + e⁻ → Cl⁻)' };
   }
-  if (keyword === '공유결합') {
-    return {
-      type: 'covalent_bond',
-      raw: text,
-      keyword,
-      description: '공유결합 형성 과정 (전자쌍 공유)',
-    };
+  if (target === 'sim:covalent_bond') {
+    return { type: 'covalent_bond', raw: text, keyword, description: '공유결합 형성 과정 (전자쌍 공유)' };
   }
-  if (keyword === '산화환원') {
-    return {
-      type: 'redox',
-      raw: text,
-      keyword,
-      description: '산화환원 반응: 전자 이동 과정',
-    };
+  if (target === 'sim:redox') {
+    return { type: 'redox', raw: text, keyword, description: '산화환원 반응: 전자 이동 과정' };
   }
-  if (keyword === '산염기' || keyword === '중화') {
-    return {
-      type: 'acid_base',
-      raw: text,
-      keyword,
-      description: '산염기 중화 반응: H⁺ + OH⁻ → H₂O',
-    };
+  if (target === 'sim:acid_base') {
+    return { type: 'acid_base', raw: text, keyword, description: '산염기 중화 반응: H⁺ + OH⁻ → H₂O' };
   }
-  if (keyword === '연소') {
-    return {
-      type: 'reaction',
-      raw: text,
-      keyword,
-      reaction: { equation: '연소 반응', reactants: [], products: [], type: 'combustion', description: '연소 반응' },
-      description: '연소 반응 (산소와 결합하여 열과 빛 방출)',
-    };
-  }
-  // 극성, 무극성 등 → PubChem으로 조회
-  const NON_FORMULA_TARGETS = ['redox', 'acid_base', 'neutralization', 'combustion'];
-  if (target && !NON_FORMULA_TARGETS.includes(target)) {
-    return {
-      type: 'molecule',
-      raw: text,
-      formula: target,
-      keyword,
-      description: `${keyword} 예시: ${target} — PubChem에서 검색 중`,
-    };
-  }
+
+  // 나머지는 PubChem 화학식으로 조회
   return {
-    type: 'unknown',
+    type: 'molecule',
     raw: text,
+    formula: target,
     keyword,
-    description: keyword,
+    description: `${keyword} 예시: ${target}`,
   };
 }
