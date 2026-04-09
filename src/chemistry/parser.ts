@@ -113,7 +113,7 @@ function parseReaction(text: string, reactantStr: string, productStr: string): P
     };
   }
 
-  // ③ 산화환원 반응: 금속 + 이온 포함
+// ③ 산화환원 반응: 금속 + 이온 포함
   const redoxMetals = ['Zn', 'Fe', 'Cu', 'Mg', 'Al', 'Na', 'K'];
   const hasRedoxMetal = redoxMetals.some(m => text.includes(m));
   const hasIon = text.includes('SO4') || text.includes('NO3') || text.includes('Cl2') ||
@@ -171,7 +171,6 @@ function parseReaction(text: string, reactantStr: string, productStr: string): P
 }
 
 function parseKeyword(text: string, keyword: string, target: string): ParseResult {
-  // 전용 시뮬레이션 컴포넌트 사용 (sim:* 접두사)
   if (target === 'sim:ionic_bond') {
     return { type: 'ionic_bond', raw: text, keyword, description: '이온결합 형성 과정 (Na → Na⁺ + e⁻, Cl + e⁻ → Cl⁻)' };
   }
@@ -212,7 +211,7 @@ function parseKeyword(text: string, keyword: string, target: string): ParseResul
       description: '연소 반응: CH₄ + 2O₂ → CO₂ + 2H₂O',
     };
   }
-
+  
   // 나머지는 PubChem 화학식으로 조회
   return {
     type: 'molecule',

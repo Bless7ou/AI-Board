@@ -2,6 +2,7 @@
 // 'sim:*' : 전용 시뮬레이션 컴포넌트 사용
 // 그 외   : PubChem에서 조회할 화학식
 export const REACTION_KEYWORDS: Record<string, string> = {
+
   '이온결합':   'sim:ionic_bond',
   '공유결합':   'sim:covalent_bond',
   '산화환원':   'sim:redox',
