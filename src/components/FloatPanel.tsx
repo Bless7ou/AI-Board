@@ -36,7 +36,7 @@ export default function FloatPanel({
     h: Math.max(minH, Math.min(h, vh - y)),
   }), [minW, minH, vw, vh]);
 
-  const clampPos = useCallback((x: number, y: number, w: number, h: number) => ({
+  const clampPos = useCallback((x: number, y: number, w: number, _h: number) => ({
     x: Math.max(0, Math.min(x, vw - Math.min(w, 80))),
     y: Math.max(0, Math.min(y, vh - 32)),
   }), [vw, vh]);
