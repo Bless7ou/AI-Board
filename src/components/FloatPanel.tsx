@@ -9,6 +9,7 @@ interface Props {
   minW?: number;
   minH?: number;
   zBase?: number;
+  hidden?: boolean;
   children: ReactNode;
 }
 
@@ -16,7 +17,7 @@ type ResizeDir = 's' | 'e' | 'se';
 
 export default function FloatPanel({
   title, defaultX, defaultY, defaultW, defaultH,
-  minW = 180, minH = 120, zBase = 20, children,
+  minW = 180, minH = 120, zBase = 20, hidden = false, children,
 }: Props) {
   const [pos,      setPos]      = useState({ x: defaultX, y: defaultY });
   const [size,     setSize]     = useState({ w: defaultW, h: defaultH });
@@ -185,12 +186,12 @@ export default function FloatPanel({
       left: pos.x, top: pos.y,
       width: size.w, height: size.h,
       zIndex: elevated ? zBase + 100 : zBase,
+      display: hidden ? 'none' : 'flex',
+      flexDirection: 'column',
       background: 'rgba(6,12,26,0.9)',
       border: `1.5px solid ${moveMode ? 'rgba(80,150,255,0.75)' : 'rgba(40,80,160,0.4)'}`,
       borderRadius: 10,
       overflow: 'hidden',
-      display: 'flex',
-      flexDirection: 'column',
       backdropFilter: 'blur(14px)',
       boxShadow: elevated
         ? '0 8px 32px rgba(40,100,255,0.3)'
