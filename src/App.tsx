@@ -12,7 +12,7 @@ import type { WikiResult } from './components/WikiSearch';
 import { searchChemistry } from './components/WikiSearch';
 import type { ParseResult } from './chemistry/types';
 import { parseChemistry } from './chemistry/parser';
-import { recognizeHandwriting, getApiKey, setApiKey } from './components/GoogleVision';
+import { recognizeHandwriting, recognizeHandwritingMultiline, getApiKey, setApiKey } from './components/GoogleVision';
 import './App.css';
 
 let itemIdCounter = 0;
@@ -94,7 +94,7 @@ export default function App() {
   // Panels
   const [assistantItems, setAssistantItems] = useState<AssistantItem[]>([]);
   const [showSim,        setShowSim]        = useState(true);
-  const [showAssistant,  setShowAssistant]  = useState(true);
+  const [showAssistant,  setShowAssistant]  = useState(false);
   const [showManual,     setShowManual]     = useState(false);
   const [showSettings,   setShowSettings]   = useState(false);
   const [showSummary,    setShowSummary]    = useState(false);
@@ -108,6 +108,31 @@ export default function App() {
   const [searchQuery,   setSearchQuery]   = useState('');
   const [searchResult,  setSearchResult]  = useState<WikiResult | null>(null);
   const [showSearch,    setShowSearch]    = useState(false);
+
+  // Quick links
+  const [showLinks, setShowLinks] = useState(false);
+  const [customLinks, setCustomLinks] = useState<{ label: string; url: string }[]>(() => {
+    try { return JSON.parse(localStorage.getItem('customLinks') || '[]'); } catch { return []; }
+  });
+  const [linkForm, setLinkForm] = useState(false);
+  const [newLabel, setNewLabel] = useState('');
+  const [newUrl, setNewUrl] = useState('');
+
+  const addCustomLink = useCallback(() => {
+    if (!newLabel.trim() || !newUrl.trim()) return;
+    let url = newUrl.trim();
+    if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+    const next = [...customLinks, { label: newLabel.trim(), url }];
+    setCustomLinks(next);
+    localStorage.setItem('customLinks', JSON.stringify(next));
+    setNewLabel(''); setNewUrl(''); setLinkForm(false);
+  }, [newLabel, newUrl, customLinks]);
+
+  const removeCustomLink = useCallback((idx: number) => {
+    const next = customLinks.filter((_, i) => i !== idx);
+    setCustomLinks(next);
+    localStorage.setItem('customLinks', JSON.stringify(next));
+  }, [customLinks]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -195,7 +220,7 @@ export default function App() {
     try {
       const url = cvRef.current?.getCroppedImageDataURL(x, y, w, h, dW, dH) ?? '';
       if (!url) throw new Error('영역을 캡처할 수 없습니다.');
-      const text = await recognizeHandwriting(url);
+      const text = await recognizeHandwritingMultiline(url);
       if (!text.trim()) { setErrorMsg('해당 영역에서 인식하지 못했습니다.'); return; }
       await cvRef.current?.drawBeautifiedText(text.trim(), x, y, w, h, dW, dH, penColor);
     } catch (e) {
@@ -224,7 +249,7 @@ export default function App() {
 
   const handleClear = useCallback(() => {
     cvRef.current?.clear();
-    setResult(null); setLastText(''); setErrorMsg(''); setAssistantItems([]);
+    setResult(null); setLastText(''); setErrorMsg('');
   }, []);
 
   const handleManualSubmit = useCallback(() => {
@@ -298,6 +323,13 @@ export default function App() {
               <div className="icon-divider" />
             </>
           )}
+          <button
+            className={`top-btn ${showAssistant ? 'active' : ''}`}
+            title="화학 도구"
+            onClick={() => setShowAssistant(v => !v)}
+          >
+            &#x1F9EA;
+          </button>
           {assistantItems.length > 0 && (
             <button className="top-btn" title="수업 요약" onClick={() => setShowSummary(true)}>
               📋
@@ -309,6 +341,79 @@ export default function App() {
               <path d="M2 13h11M8.5 2.5L12.5 6.5L5 14H1V10L8.5 2.5Z" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </button>
+          <div style={{ position: 'relative', display: 'inline-block' }}>
+            <button className="top-btn" title="바로가기" onClick={() => setShowLinks(v => !v)}>
+              <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+                <path d="M6 3H3a1 1 0 00-1 1v8a1 1 0 001 1h8a1 1 0 001-1V9M9 2h4v4M6.5 8.5L13 2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+            {showLinks && (
+              <div className="quick-links-dropdown">
+                <div className="quick-links-title">바로가기</div>
+                {[
+                  { icon: '▶', label: 'YouTube', url: 'https://www.youtube.com/' },
+                  { icon: '🔍', label: 'Google', url: 'https://www.google.com/' },
+                  { icon: '📗', label: 'Naver', url: 'https://www.naver.com/' },
+                ].map(link => (
+                  <a
+                    key={link.label}
+                    className="quick-link-item"
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setShowLinks(false)}
+                  >
+                    <span className="quick-link-icon">{link.icon}</span>
+                    <div className="quick-link-label">{link.label}</div>
+                  </a>
+                ))}
+
+                {customLinks.length > 0 && <div className="quick-links-divider" />}
+                {customLinks.map((link, i) => (
+                  <div key={i} className="quick-link-custom-row">
+                    <a
+                      className="quick-link-item"
+                      href={link.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setShowLinks(false)}
+                      style={{ flex: 1 }}
+                    >
+                      <span className="quick-link-icon">🔗</span>
+                      <div className="quick-link-label">{link.label}</div>
+                    </a>
+                    <button className="quick-link-del" onClick={() => removeCustomLink(i)} title="삭제">×</button>
+                  </div>
+                ))}
+
+                <div className="quick-links-divider" />
+                {linkForm ? (
+                  <div className="quick-link-form">
+                    <input
+                      className="quick-link-input"
+                      placeholder="이름"
+                      value={newLabel}
+                      onChange={e => setNewLabel(e.target.value)}
+                      autoFocus
+                    />
+                    <input
+                      className="quick-link-input"
+                      placeholder="주소 (예: google.com)"
+                      value={newUrl}
+                      onChange={e => setNewUrl(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') addCustomLink(); }}
+                    />
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <button className="quick-link-form-btn" onClick={addCustomLink}>추가</button>
+                      <button className="quick-link-form-btn cancel" onClick={() => { setLinkForm(false); setNewLabel(''); setNewUrl(''); }}>취소</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button className="quick-link-add" onClick={() => setLinkForm(true)}>+ 링크 추가</button>
+                )}
+              </div>
+            )}
+          </div>
           <button className="top-btn" title="설정" onClick={() => { setApiKeyInput(getApiKey()); setShowSettings(v => !v); }}>
             <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
               <circle cx="7.5" cy="7.5" r="2" stroke="currentColor" strokeWidth="1.4"/>
@@ -326,11 +431,11 @@ export default function App() {
           <SimulationPanel result={result} playing={playing} speed={speed} />
         </FloatPanel>
 
-        <FloatPanel title="🤖 수업 보조"
+        <FloatPanel title="&#x1F9EA; 화학 도구"
           defaultX={Math.max(window.innerWidth - 364, 10)}
           defaultY={54 + Math.floor(window.innerHeight * 0.44) + 14}
-          defaultW={350} defaultH={Math.floor(window.innerHeight * 0.33)}
-          minW={200} minH={110} zBase={20} hidden={noResult || !showAssistant}
+          defaultW={350} defaultH={Math.floor(window.innerHeight * 0.45)}
+          minW={200} minH={160} zBase={20} hidden={!showAssistant}
           onClose={() => setShowAssistant(false)}>
           <AssistantPanel items={assistantItems} />
         </FloatPanel>
@@ -464,11 +569,24 @@ export default function App() {
             <input className="modal-input" type="text" value={manualInput}
               onChange={e => setManualInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleManualSubmit()}
-              placeholder="H2O, NaCl, 이온결합, 2H2+O2→2H2O …" autoFocus />
-            <div className="modal-chips">
-              {['H2O','NaCl','CO2','NH3','CH4','C6H12O6','CaCO3','이온결합','공유결합','산염기','2H2+O2→2H2O','Na'].map(ex => (
-                <button key={ex} className="chip" onClick={() => setManualInput(ex)}>{ex}</button>
-              ))}
+              placeholder="H2O, 이온결합, 합성, 산화환원 …" autoFocus />
+            <div className="modal-chips-group">
+              <div className="chip-category">
+                <span className="chip-category-label">구조</span>
+                <div className="chip-category-items">
+                  {['분자','원소','이온결합','공유결합'].map(ex => (
+                    <button key={ex} className="chip" onClick={() => setManualInput(ex)}>{ex}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="chip-category">
+                <span className="chip-category-label">반응</span>
+                <div className="chip-category-items">
+                  {['합성','분해','연소','중화','산화환원','앙금','산염기'].map(ex => (
+                    <button key={ex} className="chip" onClick={() => setManualInput(ex)}>{ex}</button>
+                  ))}
+                </div>
+              </div>
             </div>
             <div className="modal-actions">
               <button className="btn-primary" onClick={handleManualSubmit}>실행</button>
@@ -521,7 +639,7 @@ export function SummaryModal({ items, onClose }: { items: AssistantItem[]; onClo
       `[화학 수업 요약] ${today}`,
       `주제: ${s.mainTopic}`,
       '',
-      ...s.sentences,
+      ...s.flowParts,
       '',
       ...(s.connections.length > 0 ? ['[학습 연관 관계]', ...s.connections.map(c => `- ${c}`), ''] : []),
       ...(s.molecules.length > 0 ? [`[화학식] ${s.molecules.map(m => m.clean).join(', ')}`] : []),
@@ -548,12 +666,27 @@ export function SummaryModal({ items, onClose }: { items: AssistantItem[]; onClo
         </div>
 
         {/* 요약 문단 */}
-        {s.sentences.length > 0 && (
+        {s.flowParts.length > 0 && (
           <div style={{
             fontSize:13,color:'#99aabb',lineHeight:1.9,
             padding:'0 4px',marginBottom:14,
           }}>
-            {s.sentences.map((sent,i) => <div key={i}>{sent}</div>)}
+            {s.flowParts.map((sent,i) => <div key={i}>{sent}</div>)}
+          </div>
+        )}
+
+        {/* 핵심 정리 */}
+        {s.keyPoints.length > 0 && (
+          <div style={{marginBottom:14}}>
+            <div style={{fontSize:11,color:'#44aa66',marginBottom:6,fontWeight:700}}>📌 핵심 정리</div>
+            {s.keyPoints.map((kp,i) => (
+              <div key={i} style={{marginBottom:8}}>
+                <div style={{fontSize:12,fontWeight:700,color:'#77bbaa',marginBottom:2}}>{kp.title}</div>
+                {kp.points.map((p,j) => (
+                  <div key={j} style={{fontSize:12,color:'#88aa99',paddingLeft:10,lineHeight:1.7}}>• {p}</div>
+                ))}
+              </div>
+            ))}
           </div>
         )}
 

@@ -18,4 +18,7 @@ export const REACTION_KEYWORDS: Record<string, string> = {
   '극성':       'H2O',
   '무극성':     'CO2',
   '연소':       'sim:combustion',
+  '분자':       'H2O',
+  '원소':       'sim:electron_config',
+  '화학반응식': 'sim:synthesis',
 };

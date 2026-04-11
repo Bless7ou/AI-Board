@@ -225,6 +225,9 @@ function parseKeyword(text: string, keyword: string, target: string): ParseResul
       description: '이중치환 반응: AgNO₃ + NaCl → AgCl↓ + NaNO₃',
     };
   }
+  if (target === 'sim:electron_config') {
+    return { type: 'electron_config', raw: text, keyword, element: 'Na', description: '원소의 전자 배치' };
+  }
   if (target === 'sim:combustion') {
     return {
       type: 'reaction', raw: text, keyword,

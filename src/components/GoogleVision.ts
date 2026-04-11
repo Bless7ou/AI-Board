@@ -86,3 +86,26 @@ export async function recognizeHandwriting(imageDataURL: string): Promise<string
   return raw.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+/** 줄바꿈을 유지한 인식 (글씨 보정용) */
+export async function recognizeHandwritingMultiline(imageDataURL: string): Promise<string> {
+  const resized = await resizeImage(imageDataURL);
+  const base64 = resized.split(',')[1];
+  if (!base64) throw new Error('이미지 데이터가 없습니다.');
+
+  const localKey = getApiKey();
+  const json = (localKey
+    ? await callDirect(base64, localKey)
+    : await callProxy(base64)) as {
+    responses?: Array<{
+      fullTextAnnotation?: { text: string };
+      error?: { message: string };
+    }>;
+  };
+
+  const r = json.responses?.[0];
+  if (r?.error) throw new Error(`Google Vision 오류: ${r.error.message}`);
+
+  const raw = r?.fullTextAnnotation?.text ?? '';
+  return raw.replace(/[ \t]+/g, ' ').trim();
+}
+
