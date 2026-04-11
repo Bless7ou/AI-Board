@@ -188,7 +188,6 @@ export default function App() {
     }]);
     // 닫혀있던 패널 다시 열기 (unknown이면 시뮬레이션은 열지 않음)
     if (parsed.type !== 'unknown') setShowSim(true);
-    setShowAssistant(true);
     return parsed;
   }, []);
 

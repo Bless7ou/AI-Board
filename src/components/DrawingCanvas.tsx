@@ -773,6 +773,7 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(
         {/* Main drawing canvas */}
         <canvas ref={cvRef} style={{
           position: 'absolute', top: 0, left: 0,
+          width: CW, height: CH,
           display: 'block', touchAction: 'none',
         }} />
 
