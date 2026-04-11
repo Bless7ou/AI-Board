@@ -4,7 +4,7 @@ import type { DrawingCanvasHandle, ToolType, EraserMode } from './components/Dra
 import SimulationPanel from './simulations/SimulationPanel';
 import AssistantPanel from './components/AssistantPanel';
 import type { AssistantItem } from './components/AssistantPanel';
-import { toCleanChem } from './components/AssistantPanel';
+import { toCleanChem, buildSummary } from './components/AssistantPanel';
 import SelectionOverlay from './components/SelectionOverlay';
 import FloatPanel from './components/FloatPanel';
 import SearchResultView from './components/SearchResultView';
@@ -88,12 +88,16 @@ export default function App() {
   const [isRecognizing, setIsRecognizing] = useState(false);
   const [lastText,      setLastText]      = useState('');
   const [isSelecting,   setIsSelecting]   = useState(false);
+  const [isBeautifying, setIsBeautifying] = useState(false);
   const [errorMsg,      setErrorMsg]      = useState('');
 
   // Panels
   const [assistantItems, setAssistantItems] = useState<AssistantItem[]>([]);
+  const [showSim,        setShowSim]        = useState(true);
+  const [showAssistant,  setShowAssistant]  = useState(true);
   const [showManual,     setShowManual]     = useState(false);
   const [showSettings,   setShowSettings]   = useState(false);
+  const [showSummary,    setShowSummary]    = useState(false);
   const [apiKeyInput,    setApiKeyInput]    = useState(getApiKey());
   const [manualInput,    setManualInput]    = useState('');
 
@@ -157,29 +161,11 @@ export default function App() {
       id: ++itemIdCounter, raw: text, clean,
       type: parsed.type, description: parsed.description, time: nowTime(),
     }]);
+    // 닫혀있던 패널 다시 열기 (unknown이면 시뮬레이션은 열지 않음)
+    if (parsed.type !== 'unknown') setShowSim(true);
+    setShowAssistant(true);
     return parsed;
   }, []);
-
-  const handleRecognize = useCallback(async () => {
-    if (isRecognizing) return;
-    setIsRecognizing(true); setErrorMsg('');
-    try {
-      const url = cvRef.current?.getImageDataURL() ?? '';
-      if (!url) throw new Error('캔버스 이미지를 가져올 수 없습니다.');
-      const text = await recognizeHandwriting(url);
-      setLastText(text || '(인식 결과 없음)');
-      if (!text.trim()) { setErrorMsg('화학 내용을 인식하지 못했습니다.'); return; }
-      const parsed = processText(text);
-      if (parsed) {
-        setResult(parsed);
-        if (parsed.type === 'unknown') setErrorMsg(`"${text.slice(0,40)}" — 알 수 없는 내용입니다.`);
-      }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : '인식 오류';
-      setErrorMsg(msg);
-      if (msg.includes('API 키')) setShowSettings(true);
-    } finally { setIsRecognizing(false); }
-  }, [isRecognizing, processText]);
 
   const handlePartial = useCallback(async (x: number, y: number, w: number, h: number, dW: number, dH: number) => {
     setIsSelecting(false); setIsRecognizing(true); setErrorMsg('');
@@ -191,8 +177,11 @@ export default function App() {
       if (!text.trim()) { setErrorMsg('해당 영역에서 인식하지 못했습니다.'); return; }
       const parsed = processText(text);
       if (parsed) {
-        setResult(parsed);
-        if (parsed.type === 'unknown') setErrorMsg(`"${text.slice(0,40)}" — 알 수 없는 내용입니다.`);
+        if (parsed.type === 'unknown') {
+          setErrorMsg(`"${text.slice(0,40)}" — 알 수 없는 내용입니다.`);
+        } else {
+          setResult(parsed);
+        }
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : '인식 오류';
@@ -200,6 +189,21 @@ export default function App() {
       if (msg.includes('API 키')) setShowSettings(true);
     } finally { setIsRecognizing(false); }
   }, [processText]);
+
+  const handleBeautify = useCallback(async (x: number, y: number, w: number, h: number, dW: number, dH: number) => {
+    setIsBeautifying(false); setIsRecognizing(true); setErrorMsg('');
+    try {
+      const url = cvRef.current?.getCroppedImageDataURL(x, y, w, h, dW, dH) ?? '';
+      if (!url) throw new Error('영역을 캡처할 수 없습니다.');
+      const text = await recognizeHandwriting(url);
+      if (!text.trim()) { setErrorMsg('해당 영역에서 인식하지 못했습니다.'); return; }
+      await cvRef.current?.drawBeautifiedText(text.trim(), x, y, w, h, dW, dH, penColor);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '인식 오류';
+      setErrorMsg(msg);
+      if (msg.includes('API 키')) setShowSettings(true);
+    } finally { setIsRecognizing(false); }
+  }, [penColor]);
 
   const handleSearchSelect = useCallback(async (x: number, y: number, w: number, h: number, dW: number, dH: number) => {
     setIsSearchMode(false); setSearchLoading(true); setSearchError('');
@@ -226,7 +230,7 @@ export default function App() {
   const handleManualSubmit = useCallback(() => {
     if (!manualInput.trim()) return;
     const parsed = processText(manualInput.trim());
-    if (parsed) { setResult(parsed); setLastText(manualInput.trim()); }
+    if (parsed && parsed.type !== 'unknown') { setResult(parsed); setLastText(manualInput.trim()); }
     setShowManual(false); setManualInput(''); setErrorMsg('');
   }, [manualInput, processText]);
 
@@ -244,6 +248,7 @@ export default function App() {
         />
 
         {isSelecting && <SelectionOverlay onSelect={handlePartial} onCancel={() => setIsSelecting(false)} />}
+        {isBeautifying && <SelectionOverlay onSelect={handleBeautify} onCancel={() => setIsBeautifying(false)} />}
         {isSearchMode && <SelectionOverlay onSelect={handleSearchSelect} onCancel={() => setIsSearchMode(false)} />}
 
         {lastText && (
@@ -263,10 +268,20 @@ export default function App() {
           <div className="icon-divider" />
           <button
             className={`icon-btn ${isSelecting ? 'active' : ''}`}
-            onClick={() => { setIsSelecting(v => !v); setIsSearchMode(false); }}
+            onClick={() => { setIsSelecting(v => !v); setIsBeautifying(false); setIsSearchMode(false); }}
             title="영역 선택 인식"
           >
             <IcLasso />
+          </button>
+          <button
+            className={`icon-btn ${isBeautifying ? 'active' : ''}`}
+            onClick={() => { setIsBeautifying(v => !v); setIsSelecting(false); setIsSearchMode(false); }}
+            title="글씨 꾸미기"
+          >
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <text x="3" y="14" fontSize="14" fontWeight="bold" fill="currentColor" fontFamily="serif" fontStyle="italic">A</text>
+              <path d="M12 4C13 3 15 3 15.5 5C16 7 14 8 13 7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+            </svg>
           </button>
         </div>
 
@@ -282,6 +297,11 @@ export default function App() {
               <button className="top-btn" style={{fontSize:10}} onClick={() => setSpeed(s => Math.min(3, +(s+0.25).toFixed(2)))}>▶</button>
               <div className="icon-divider" />
             </>
+          )}
+          {assistantItems.length > 0 && (
+            <button className="top-btn" title="수업 요약" onClick={() => setShowSummary(true)}>
+              📋
+            </button>
           )}
           <div className={`ocr-dot ${isRecognizing ? 'ocr-loading' : 'ocr-ready'}`} title="Google Vision API" />
           <button className="top-btn" title="수동 입력" onClick={() => setShowManual(v => !v)}>
@@ -301,7 +321,8 @@ export default function App() {
         <FloatPanel title="🔬 시뮬레이션"
           defaultX={Math.max(window.innerWidth - 364, 10)} defaultY={54}
           defaultW={350} defaultH={Math.floor(window.innerHeight * 0.44)}
-          minW={200} minH={140} zBase={20} hidden={noResult}>
+          minW={200} minH={140} zBase={20} hidden={noResult || !showSim}
+          onClose={() => setShowSim(false)}>
           <SimulationPanel result={result} playing={playing} speed={speed} />
         </FloatPanel>
 
@@ -309,18 +330,17 @@ export default function App() {
           defaultX={Math.max(window.innerWidth - 364, 10)}
           defaultY={54 + Math.floor(window.innerHeight * 0.44) + 14}
           defaultW={350} defaultH={Math.floor(window.innerHeight * 0.33)}
-          minW={200} minH={110} zBase={20} hidden={noResult}>
+          minW={200} minH={110} zBase={20} hidden={noResult || !showAssistant}
+          onClose={() => setShowAssistant(false)}>
           <AssistantPanel items={assistantItems} />
         </FloatPanel>
 
         <FloatPanel title="📖 Wikipedia"
           defaultX={10} defaultY={60}
           defaultW={340} defaultH={Math.floor(window.innerHeight * 0.52)}
-          minW={220} minH={140} zBase={30} hidden={!showSearch}>
-          <div style={{ position:'relative', height:'100%' }}>
-            <button onClick={() => setShowSearch(false)} className="panel-close">✕</button>
-            <SearchResultView result={searchResult} loading={searchLoading} error={searchError} query={searchQuery} />
-          </div>
+          minW={220} minH={140} zBase={30} hidden={!showSearch}
+          onClose={() => setShowSearch(false)}>
+          <SearchResultView result={searchResult} loading={searchLoading} error={searchError} query={searchQuery} />
         </FloatPanel>
 
         {/* ── BOTTOM-LEFT: Tool FAB ── */}
@@ -413,7 +433,7 @@ export default function App() {
           </button>
         </div>
 
-        {/* ── BOTTOM-RIGHT: Recognize / Search ── */}
+        {/* ── BOTTOM-RIGHT: Search ── */}
         <div className="float-bottom-right">
           <button
             className={`action-fab${isSearchMode ? ' search-active' : ''}`}
@@ -423,15 +443,6 @@ export default function App() {
           >
             <span className="action-fab-icon">📖</span>
             <span className="action-fab-label">검색</span>
-          </button>
-          <button
-            className={`action-fab recognize-fab${isRecognizing ? ' loading' : ''}`}
-            onClick={handleRecognize}
-            disabled={isRecognizing || isSelecting}
-            title="전체 인식"
-          >
-            <span className="action-fab-icon">{isRecognizing ? '…' : '🔍'}</span>
-            <span className="action-fab-label">{isRecognizing ? '인식 중' : '인식'}</span>
           </button>
         </div>
 
@@ -467,6 +478,9 @@ export default function App() {
         </div>
       )}
 
+      {/* ── Summary modal ── */}
+      {showSummary && <SummaryModal items={assistantItems} onClose={() => setShowSummary(false)} />}
+
       {/* ── Settings modal ── */}
       {showSettings && (
         <div className="overlay" onClick={e => { if (e.target === e.currentTarget) setShowSettings(false); }}>
@@ -492,43 +506,98 @@ export default function App() {
   );
 }
 
-// ─── SummaryModal (exported for external use) ────────────────────────────────
-const TYPE_LABEL: Record<string, string> = {
+// ─── SummaryModal ────────────────────────────────────────────────────────────
+const TYPE_LABEL_STR: Record<string, string> = {
   molecule:'분자', reaction:'반응식', ionic_bond:'이온결합',
   covalent_bond:'공유결합', electron_config:'전자배치',
   acid_base:'산염기', redox:'산화환원', unknown:'기타',
 };
 export function SummaryModal({ items, onClose }: { items: AssistantItem[]; onClose: () => void }) {
   const today = new Date().toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric'});
-  const mols = [...new Set(items.filter(i=>i.type==='molecule').map(i=>i.clean))];
-  const rxns = [...new Set(items.filter(i=>i.type==='reaction').map(i=>i.clean))];
-  const cons = [...new Set(items.filter(i=>['ionic_bond','covalent_bond','acid_base','redox','electron_config'].includes(i.type)).map(i=>TYPE_LABEL[i.type]??i.type))];
+  const s = buildSummary(items);
+
   const handleCopy = () => {
-    const lines=[`📚 화학 수업 요약 — ${today}`,'',
-      mols.length?`[화학식]\n${mols.join(', ')}`:'',
-      rxns.length?`[반응식]\n${rxns.join('\n')}`:'',
-      cons.length?`[개념]\n${cons.join(', ')}`:'',
-      '','[수업 흐름]',...items.map(i=>`${i.time}  ${TYPE_LABEL[i.type]??i.type}  ${i.clean}`),
-    ].filter(Boolean).join('\n');
+    const lines = [
+      `[화학 수업 요약] ${today}`,
+      `주제: ${s.mainTopic}`,
+      '',
+      ...s.sentences,
+      '',
+      ...(s.connections.length > 0 ? ['[학습 연관 관계]', ...s.connections.map(c => `- ${c}`), ''] : []),
+      ...(s.molecules.length > 0 ? [`[화학식] ${s.molecules.map(m => m.clean).join(', ')}`] : []),
+      ...(s.reactions.length > 0 ? [`[반응식] ${s.reactions.map(r => r.clean).join(' / ')}`] : []),
+      ...(s.concepts.length > 0 ? [`[개념] ${s.concepts.map(c => TYPE_LABEL_STR[c.type] ?? c.type).join(', ')}`] : []),
+      '',
+      `총 인식 ${s.totalRecognitions}회 / 고유 항목 ${s.uniqueCount}개${s.timeRange ? ` / ${s.timeRange}` : ''}`,
+    ].filter(l => l !== undefined).join('\n');
     navigator.clipboard.writeText(lines).catch(()=>{});
   };
+
   return (
     <div className="overlay" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-      <div className="modal" style={{maxWidth:520,maxHeight:'80vh',overflowY:'auto'}}>
+      <div className="modal" style={{maxWidth:540,maxHeight:'80vh',overflowY:'auto'}}>
         <div className="modal-title">📋 수업 요약 — {today}</div>
-        {mols.length>0&&<SumSec title="화학식" color="#4499ff" items={mols}/>}
-        {rxns.length>0&&<SumSec title="반응식" color="#ff9944" items={rxns}/>}
-        {cons.length>0&&<SumSec title="개념"   color="#aa66ff" items={cons}/>}
-        <div style={{marginTop:16,borderTop:'1px solid rgba(60,100,160,0.2)',paddingTop:12}}>
-          <div style={{fontSize:11,color:'#4466aa',marginBottom:8,fontWeight:700}}>수업 흐름</div>
-          {items.map(item=>(
-            <div key={item.id} style={{display:'flex',gap:10,alignItems:'center',padding:'4px 0',borderBottom:'1px solid rgba(40,70,110,0.15)',fontSize:12}}>
-              <span style={{color:'#334466',minWidth:36}}>{item.time}</span>
-              <span style={{fontSize:10,padding:'1px 6px',borderRadius:8,background:'rgba(60,100,200,0.15)',color:'#6688cc',minWidth:50,textAlign:'center'}}>{TYPE_LABEL[item.type]??item.type}</span>
-              <span style={{color:'#aaccff',fontFamily:'Courier New,monospace'}}>{item.clean}</span>
-            </div>
-          ))}
+
+        {/* 주제 */}
+        <div style={{
+          padding:'8px 14px', marginBottom:14, borderRadius:8,
+          background:'rgba(40,80,180,0.15)', border:'1px solid rgba(60,120,240,0.25)',
+        }}>
+          <div style={{fontSize:10,color:'#5577aa',marginBottom:2}}>수업 주제</div>
+          <div style={{fontSize:15,fontWeight:700,color:'#88bbff'}}>{s.mainTopic}</div>
         </div>
+
+        {/* 요약 문단 */}
+        {s.sentences.length > 0 && (
+          <div style={{
+            fontSize:13,color:'#99aabb',lineHeight:1.9,
+            padding:'0 4px',marginBottom:14,
+          }}>
+            {s.sentences.map((sent,i) => <div key={i}>{sent}</div>)}
+          </div>
+        )}
+
+        {/* 연관 관계 */}
+        {s.connections.length > 0 && (
+          <div style={{marginBottom:14}}>
+            <div style={{fontSize:11,color:'#4466aa',marginBottom:6,fontWeight:700}}>학습 연관 관계</div>
+            {s.connections.map((c,i) => (
+              <div key={i} style={{
+                display:'flex',gap:6,alignItems:'center',
+                fontSize:12,color:'#66aa88',padding:'3px 0',
+              }}>
+                <span style={{color:'#44cc77',fontSize:14}}>&#x2192;</span> {c}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* 다룬 내용 상세 */}
+        {s.molecules.length > 0 && (
+          <SumDetail title="다룬 화학식" color="#4499ff"
+            items={s.molecules.map(m => ({ label: m.clean, desc: m.description }))} />
+        )}
+        {s.reactions.length > 0 && (
+          <SumDetail title="다룬 반응식" color="#ff9944"
+            items={s.reactions.map(r => ({ label: r.clean, desc: r.description }))} />
+        )}
+        {s.concepts.length > 0 && (
+          <SumDetail title="다룬 개념" color="#aa66ff"
+            items={s.concepts.map(c => ({ label: TYPE_LABEL_STR[c.type] ?? c.type, desc: c.description }))} />
+        )}
+
+        {/* 통계 */}
+        <div style={{
+          marginTop:14,padding:'8px 12px',borderRadius:8,
+          background:'rgba(20,30,60,0.6)',
+          display:'flex',gap:16,flexWrap:'wrap',
+          fontSize:11,color:'#445566',
+        }}>
+          <span>인식 <strong style={{color:'#6688aa'}}>{s.totalRecognitions}</strong>회</span>
+          <span>고유 항목 <strong style={{color:'#6688aa'}}>{s.uniqueCount}</strong>개</span>
+          {s.timeRange && <span>시간 <strong style={{color:'#6688aa'}}>{s.timeRange}</strong></span>}
+        </div>
+
         <div className="modal-actions" style={{marginTop:16}}>
           <button className="btn-primary" onClick={handleCopy}>📋 복사</button>
           <button className="btn-secondary" onClick={onClose}>닫기</button>
@@ -537,15 +606,23 @@ export function SummaryModal({ items, onClose }: { items: AssistantItem[]; onClo
     </div>
   );
 }
-function SumSec({title,color,items}:{title:string;color:string;items:string[]}) {
+
+function SumDetail({ title, color, items }: { title: string; color: string; items: { label: string; desc: string }[] }) {
   return (
     <div style={{marginBottom:12}}>
       <div style={{fontSize:11,color:'#4466aa',marginBottom:6,fontWeight:700}}>{title}</div>
-      <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
-        {items.map((item,i)=>(
-          <span key={i} style={{padding:'3px 10px',borderRadius:12,background:`${color}18`,border:`1px solid ${color}33`,color,fontSize:13,fontFamily:'Courier New,monospace'}}>{item}</span>
-        ))}
-      </div>
+      {items.map((item,i) => (
+        <div key={i} style={{
+          display:'flex',gap:8,alignItems:'baseline',
+          padding:'4px 0',borderBottom:'1px solid rgba(40,70,110,0.15)',
+        }}>
+          <span style={{
+            fontSize:13,fontWeight:600,fontFamily:'Courier New,monospace',
+            color,minWidth:60,
+          }}>{item.label}</span>
+          <span style={{fontSize:11,color:'#556677'}}>{item.desc}</span>
+        </div>
+      ))}
     </div>
   );
 }

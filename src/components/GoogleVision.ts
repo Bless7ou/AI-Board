@@ -1,9 +1,4 @@
-const ENDPOINT = 'https://vision.googleapis.com/v1/images:annotate';
-
-const PROMPT_HINT =
-  'H2O NaCl CO2 NH3 CH4 HCl N2 O2 H2SO4 NaOH CaCO3 Fe2O3 ' +
-  '이온결합 공유결합 산화환원 산염기 중화 연소 극성 무극성 ' +
-  'Na Cl Fe Ca Mg Al Cu Zn';
+const DIRECT_ENDPOINT = 'https://vision.googleapis.com/v1/images:annotate';
 
 export function getApiKey(): string {
   return import.meta.env.VITE_GOOGLE_VISION_KEY || localStorage.getItem('google_vision_key') || '';
@@ -29,15 +24,23 @@ function resizeImage(dataURL: string, maxW = 600, maxH = 400): Promise<string> {
   });
 }
 
-export async function recognizeHandwriting(imageDataURL: string): Promise<string> {
-  const key = getApiKey();
-  if (!key) throw new Error('API 키가 없습니다. 설정에서 Google Vision API 키를 입력해주세요.');
+/** 서버리스 프록시 경유 (배포 환경) */
+async function callProxy(base64: string): Promise<string> {
+  const res = await fetch('/api/vision', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image: base64 }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error ?? res.statusText);
+  }
+  return res.json();
+}
 
-  const resized = await resizeImage(imageDataURL);
-  const base64 = resized.split(',')[1];
-  if (!base64) throw new Error('이미지 데이터가 없습니다.');
-
-  const response = await fetch(`${ENDPOINT}?key=${key}`, {
+/** Google Vision 직접 호출 (로컬 개발용) */
+async function callDirect(base64: string, key: string): Promise<unknown> {
+  const res = await fetch(`${DIRECT_ENDPOINT}?key=${key}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -45,22 +48,31 @@ export async function recognizeHandwriting(imageDataURL: string): Promise<string
         image: { content: base64 },
         features: [{ type: 'DOCUMENT_TEXT_DETECTION', maxResults: 1 }],
         imageContext: {
-          textDetectionParams: {
-            enableTextDetectionConfidenceScore: true,
-          },
+          textDetectionParams: { enableTextDetectionConfidenceScore: true },
           languageHints: ['ko', 'en'],
         },
       }],
     }),
   });
-
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    const msg = (err as { error?: { message?: string } }).error?.message ?? response.statusText;
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const msg = (err as { error?: { message?: string } }).error?.message ?? res.statusText;
     throw new Error(`Google Vision 오류: ${msg}`);
   }
+  return res.json();
+}
 
-  const json = await response.json() as {
+export async function recognizeHandwriting(imageDataURL: string): Promise<string> {
+  const resized = await resizeImage(imageDataURL);
+  const base64 = resized.split(',')[1];
+  if (!base64) throw new Error('이미지 데이터가 없습니다.');
+
+  const localKey = getApiKey();
+
+  // 로컬 키가 있으면 직접 호출, 없으면 서버 프록시 경유
+  const json = (localKey
+    ? await callDirect(base64, localKey)
+    : await callProxy(base64)) as {
     responses?: Array<{
       fullTextAnnotation?: { text: string };
       error?: { message: string };
@@ -71,9 +83,6 @@ export async function recognizeHandwriting(imageDataURL: string): Promise<string
   if (r?.error) throw new Error(`Google Vision 오류: ${r.error.message}`);
 
   const raw = r?.fullTextAnnotation?.text ?? '';
-  // 줄바꿈 제거, 공백 정리
   return raw.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-// 사용하지 않지만 타입 일관성을 위해 export
-export const _ = PROMPT_HINT;

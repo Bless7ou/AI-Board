@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, type ReactNode } from 'react';
+import { useState, useRef, useEffect, useCallback, type ReactNode } from 'react';
 
 interface Props {
   title: string;
@@ -10,65 +10,88 @@ interface Props {
   minH?: number;
   zBase?: number;
   hidden?: boolean;
+  onClose?: () => void;
   children: ReactNode;
 }
 
-type ResizeDir = 's' | 'e' | 'se';
+type Edge = 'right' | 'bottom' | 'corner';
 
 export default function FloatPanel({
   title, defaultX, defaultY, defaultW, defaultH,
-  minW = 180, minH = 120, zBase = 20, hidden = false, children,
+  minW = 180, minH = 120, zBase = 20, hidden = false, onClose, children,
 }: Props) {
-  const [pos,      setPos]      = useState({ x: defaultX, y: defaultY });
-  const [size,     setSize]     = useState({ w: defaultW, h: defaultH });
-  const [moveMode, setMoveMode] = useState(false);
-  const [elevated, setElevated] = useState(false);
+  // ── 뷰포트 크기 추적 ──
+  const [vw, setVw] = useState(window.innerWidth);
+  const [vh, setVh] = useState(window.innerHeight);
 
-  // ── refs: 이벤트 핸들러에서 항상 최신값 참조 ──
-  const moveModeRef = useRef(false);          // moveMode 상태 미러
-  const posRef      = useRef(pos);            // pos 상태 미러
-  const sizeRef     = useRef(size);           // size 상태 미러
+  useEffect(() => {
+    const onResize = () => { setVw(window.innerWidth); setVh(window.innerHeight); };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
-  const isDragging  = useRef(false);
-  const isResizing  = useRef(false);
-  const dragOrigin  = useRef<{ ox: number; oy: number; px: number; py: number } | null>(null);
-  const resizeOrigin= useRef<{ ox: number; oy: number; ow: number; oh: number; dir: ResizeDir } | null>(null);
-  const lastTapMs   = useRef(0);
+  // ── clamp 헬퍼: 위치·크기가 뷰포트를 벗어나지 않도록 ──
+  const clampSize = useCallback((w: number, h: number, x: number, y: number) => ({
+    w: Math.max(minW, Math.min(w, vw - x)),
+    h: Math.max(minH, Math.min(h, vh - y)),
+  }), [minW, minH, vw, vh]);
 
-  // 상태 변경마다 ref 동기화
+  const clampPos = useCallback((x: number, y: number, w: number, _h: number) => ({
+    x: Math.max(0, Math.min(x, vw - Math.min(w, 80))),
+    y: Math.max(0, Math.min(y, vh - 32)),
+  }), [vw, vh]);
+
+  // ── 초기값을 뷰포트에 맞게 보정 ──
+  const initW = Math.max(minW, Math.min(defaultW, vw - defaultX));
+  const initH = Math.max(minH, Math.min(defaultH, vh - defaultY));
+
+  const [pos,  setPos]  = useState({ x: defaultX, y: defaultY });
+  const [size, setSize] = useState({ w: initW, h: initH });
+  const [moveMode,  setMoveMode]  = useState(false);
+  const [elevated,  setElevated]  = useState(false);
+
+  // ── 뷰포트 변경 시 패널이 밖으로 나가지 않도록 재조정 ──
+  useEffect(() => {
+    setSize(prev => clampSize(prev.w, prev.h, pos.x, pos.y));
+    setPos(prev => clampPos(prev.x, prev.y, size.w, size.h));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vw, vh]);
+
+  // ── refs ──
+  const moveModeRef = useRef(false);
+  const posRef  = useRef(pos);
+  const sizeRef = useRef(size);
+
   useEffect(() => { moveModeRef.current = moveMode; }, [moveMode]);
-  useEffect(() => { posRef.current  = pos;  }, [pos]);
+  useEffect(() => { posRef.current = pos; }, [pos]);
   useEffect(() => { sizeRef.current = size; }, [size]);
 
-  /* ── 글로벌 mousemove / mouseup ── */
+  // ═══════════════════════════════════════════════════════════
+  //  DRAG MOVE (타이틀바)
+  // ═══════════════════════════════════════════════════════════
+  const isDragging = useRef(false);
+  const dragOrigin = useRef<{ ox: number; oy: number; px: number; py: number } | null>(null);
+  const lastTapMs  = useRef(0);
+
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
-      if (isDragging.current && dragOrigin.current) {
-        const { ox, oy, px, py } = dragOrigin.current;
-        setPos({ x: Math.max(0, px + e.clientX - ox), y: Math.max(0, py + e.clientY - oy) });
-      }
-      if (isResizing.current && resizeOrigin.current) {
-        const { ox, oy, ow, oh, dir } = resizeOrigin.current;
-        const dx = e.clientX - ox, dy = e.clientY - oy;
-        setSize(prev => ({
-          w: dir !== 's' ? Math.max(minW, ow + dx) : prev.w,
-          h: dir !== 'e' ? Math.max(minH, oh + dy) : prev.h,
-        }));
-      }
+      if (!isDragging.current || !dragOrigin.current) return;
+      const { ox, oy, px, py } = dragOrigin.current;
+      const nx = px + e.clientX - ox;
+      const ny = py + e.clientY - oy;
+      const c = clampPos(nx, ny, sizeRef.current.w, sizeRef.current.h);
+      setPos(c);
     };
     const onUp = () => {
       isDragging.current = false;
-      isResizing.current = false;
       dragOrigin.current = null;
-      resizeOrigin.current = null;
       setElevated(false);
     };
     window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup',   onUp);
+    window.addEventListener('mouseup', onUp);
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
-  }, [minW, minH]);
+  }, [clampPos]);
 
-  /* ── 타이틀바: 마우스 ── */
   const onTitleMouseDown = (e: React.MouseEvent) => {
     if (!moveModeRef.current) return;
     e.preventDefault();
@@ -76,109 +99,128 @@ export default function FloatPanel({
     setElevated(true);
     dragOrigin.current = { ox: e.clientX, oy: e.clientY, px: posRef.current.x, py: posRef.current.y };
   };
-
   const onTitleDblClick = () => setMoveMode(v => !v);
 
-  /* ── 타이틀바: 터치 ── */
-  // DOM 이벤트로 등록해야 passive:false 제어 가능
+  // ── 타이틀바 터치 이동 ──
   const titleRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const el = titleRef.current;
     if (!el) return;
-
     let dragStart: { ox: number; oy: number; px: number; py: number } | null = null;
+    let dragTouchId: number | null = null;
 
     const onTouchStart = (e: TouchEvent) => {
-      e.preventDefault(); // 브라우저 기본 줌/스크롤 차단
-
-      // 더블탭 감지 (350ms 이내 두 번)
+      // 닫기 버튼 등 자식 요소에서 시작된 터치는 무시
+      if ((e.target as HTMLElement).tagName === 'BUTTON') return;
+      e.preventDefault();
       const now = Date.now();
       if (now - lastTapMs.current < 350) {
         moveModeRef.current = !moveModeRef.current;
         setMoveMode(moveModeRef.current);
         lastTapMs.current = 0;
-        dragStart = null;
         return;
       }
       lastTapMs.current = now;
-
-      // 이동 모드일 때만 드래그 시작
       if (!moveModeRef.current) return;
-      const t = e.touches[0];
+      const t = e.changedTouches[0];
+      dragTouchId = t.identifier;
       dragStart = { ox: t.clientX, oy: t.clientY, px: posRef.current.x, py: posRef.current.y };
       setElevated(true);
     };
-
     const onTouchMove = (e: TouchEvent) => {
       e.preventDefault();
-      if (!moveModeRef.current || !dragStart) return;
-      const t = e.touches[0];
+      if (!moveModeRef.current || !dragStart || dragTouchId === null) return;
+      const t = Array.from(e.touches).find(touch => touch.identifier === dragTouchId);
+      if (!t) return;
+      const nx = dragStart.px + t.clientX - dragStart.ox;
+      const ny = dragStart.py + t.clientY - dragStart.oy;
       setPos({
-        x: Math.max(0, dragStart.px + t.clientX - dragStart.ox),
-        y: Math.max(0, dragStart.py + t.clientY - dragStart.oy),
+        x: Math.max(0, Math.min(nx, window.innerWidth - 80)),
+        y: Math.max(0, Math.min(ny, window.innerHeight - 32)),
       });
     };
-
-    const onTouchEnd = () => {
-      dragStart = null;
-      setElevated(false);
+    const onTouchEnd = (e: TouchEvent) => {
+      const ended = Array.from(e.changedTouches).find(t => t.identifier === dragTouchId);
+      if (ended) { dragStart = null; dragTouchId = null; setElevated(false); }
     };
+    const onTouchCancel = () => { dragStart = null; dragTouchId = null; setElevated(false); };
 
     el.addEventListener('touchstart', onTouchStart, { passive: false });
-    el.addEventListener('touchmove',  onTouchMove,  { passive: false });
-    el.addEventListener('touchend',   onTouchEnd);
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd);
+    el.addEventListener('touchcancel', onTouchCancel);
     return () => {
       el.removeEventListener('touchstart', onTouchStart);
-      el.removeEventListener('touchmove',  onTouchMove);
-      el.removeEventListener('touchend',   onTouchEnd);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchCancel);
     };
-  }, []); // 마운트 시 한 번만 — 내부에서 ref로 최신값 참조
+  }, []);
 
-  /* ── 리사이즈 핸들: 마우스 ── */
-  const startResizeMouse = (e: React.MouseEvent, dir: ResizeDir) => {
+  // ═══════════════════════════════════════════════════════════
+  //  DRAG RESIZE (우측/하단/코너 핸들)
+  // ═══════════════════════════════════════════════════════════
+  const resizing    = useRef(false);
+  const resizeEdge  = useRef<Edge>('corner');
+  const resizeStart = useRef<{ mx: number; my: number; w: number; h: number } | null>(null);
+
+  const startResize = useCallback((e: React.MouseEvent | React.TouchEvent, edge: Edge) => {
     e.preventDefault();
     e.stopPropagation();
-    isResizing.current = true;
+    resizing.current = true;
+    resizeEdge.current = edge;
     setElevated(true);
-    resizeOrigin.current = { ox: e.clientX, oy: e.clientY, ow: sizeRef.current.w, oh: sizeRef.current.h, dir };
-  };
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    resizeStart.current = { mx: clientX, my: clientY, w: sizeRef.current.w, h: sizeRef.current.h };
+  }, []);
 
-  /* ── 리사이즈 핸들: 터치 ── */
-  const makeResizeTouchHandlers = (dir: ResizeDir) => {
-    let origin: { ox: number; oy: number; ow: number; oh: number } | null = null;
+  useEffect(() => {
+    const onMove = (e: MouseEvent | TouchEvent) => {
+      if (!resizing.current || !resizeStart.current) return;
+      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+      const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+      const { mx, my, w, h } = resizeStart.current;
+      const edge = resizeEdge.current;
 
-    const onStart = (e: TouchEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const t = e.touches[0];
-      origin = { ox: t.clientX, oy: t.clientY, ow: sizeRef.current.w, oh: sizeRef.current.h };
-      setElevated(true);
+      const maxW = window.innerWidth - posRef.current.x;
+      const maxH = window.innerHeight - posRef.current.y;
+
+      let nw = w;
+      let nh = h;
+      if (edge === 'right' || edge === 'corner') nw = w + (clientX - mx);
+      if (edge === 'bottom' || edge === 'corner') nh = h + (clientY - my);
+
+      setSize({
+        w: Math.max(minW, Math.min(nw, maxW)),
+        h: Math.max(minH, Math.min(nh, maxH)),
+      });
     };
-    const onMove = (e: TouchEvent) => {
-      e.preventDefault();
-      if (!origin) return;
-      const t = e.touches[0];
-      const dx = t.clientX - origin.ox, dy = t.clientY - origin.oy;
-      setSize(prev => ({
-        w: dir !== 's' ? Math.max(minW, origin!.ow + dx) : prev.w,
-        h: dir !== 'e' ? Math.max(minH, origin!.oh + dy) : prev.h,
-      }));
+    const onUp = () => {
+      if (resizing.current) {
+        resizing.current = false;
+        resizeStart.current = null;
+        setElevated(false);
+      }
     };
-    const onEnd = () => { origin = null; setElevated(false); };
 
-    return (el: HTMLDivElement | null) => {
-      if (!el) return;
-      el.addEventListener('touchstart', onStart, { passive: false });
-      el.addEventListener('touchmove',  onMove,  { passive: false });
-      el.addEventListener('touchend',   onEnd);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('touchend', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend', onUp);
     };
-  };
+  }, [minW, minH]);
 
-  // 리사이즈 핸들 ref callbacks (마운트 시 한 번 등록)
-  const attachS  = useRef(makeResizeTouchHandlers('s'));
-  const attachE  = useRef(makeResizeTouchHandlers('e'));
-  const attachSE = useRef(makeResizeTouchHandlers('se'));
+  // ═══════════════════════════════════════════════════════════
+  //  RENDER
+  // ═══════════════════════════════════════════════════════════
+  const HANDLE = 8;
 
   return (
     <div style={{
@@ -188,14 +230,11 @@ export default function FloatPanel({
       zIndex: elevated ? zBase + 100 : zBase,
       display: hidden ? 'none' : 'flex',
       flexDirection: 'column',
-      background: 'rgba(6,12,26,0.9)',
+      background: 'rgba(6,12,26,0.95)',
       border: `1.5px solid ${moveMode ? 'rgba(80,150,255,0.75)' : 'rgba(40,80,160,0.4)'}`,
       borderRadius: 10,
       overflow: 'hidden',
-      backdropFilter: 'blur(14px)',
-      boxShadow: elevated
-        ? '0 8px 32px rgba(40,100,255,0.3)'
-        : '0 4px 24px rgba(0,0,0,0.6)',
+      boxShadow: elevated ? '0 8px 32px rgba(40,100,255,0.3)' : '0 4px 24px rgba(0,0,0,0.6)',
       userSelect: 'none',
     }}>
 
@@ -205,7 +244,7 @@ export default function FloatPanel({
         onMouseDown={onTitleMouseDown}
         onDoubleClick={onTitleDblClick}
         style={{
-          padding: '5px 10px',
+          padding: '4px 8px',
           background: moveMode ? 'rgba(40,90,220,0.38)' : 'rgba(10,20,50,0.75)',
           borderBottom: '1px solid rgba(40,70,130,0.3)',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -213,14 +252,37 @@ export default function FloatPanel({
           fontSize: '11px', fontWeight: 700,
           color: moveMode ? '#88bbff' : '#4a6a99',
           flexShrink: 0,
+          gap: 6,
           transition: 'background 0.2s, color 0.2s',
           touchAction: 'none',
         }}
       >
-        <span>{title}</span>
-        <span style={{ fontSize: 9, opacity: 0.55, fontWeight: 400 }}>
-          {moveMode ? '✥ 이동 모드 — 더블탭 해제' : '더블탭 → 이동'}
+        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {title}
+          <span style={{ fontSize: 9, opacity: 0.5, fontWeight: 400, marginLeft: 6 }}>
+            {moveMode ? '✥ 이동' : '더블탭→이동'}
+          </span>
         </span>
+        {onClose && (
+          <button
+            onClick={e => { e.stopPropagation(); onClose(); }}
+            onTouchEnd={e => { e.stopPropagation(); e.preventDefault(); onClose(); }}
+            onMouseDown={e => e.stopPropagation()}
+            onTouchStart={e => e.stopPropagation()}
+            style={{
+              background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(80,100,140,0.3)',
+              color: '#6a8099', cursor: 'pointer', borderRadius: 5,
+              fontSize: 13, lineHeight: 1, padding: '4px 7px',
+              flexShrink: 0, transition: 'color 0.15s, background 0.15s',
+              touchAction: 'auto',
+            }}
+            onMouseEnter={e => { const b = e.currentTarget; b.style.color = '#ff7766'; b.style.background = 'rgba(255,60,40,0.15)'; }}
+            onMouseLeave={e => { const b = e.currentTarget; b.style.color = '#6a8099'; b.style.background = 'rgba(255,255,255,0.05)'; }}
+            title="닫기"
+          >
+            ✕
+          </button>
+        )}
       </div>
 
       {/* 콘텐츠 */}
@@ -228,38 +290,37 @@ export default function FloatPanel({
         {children}
       </div>
 
-      {/* 아래쪽 가장자리 리사이즈 */}
+      {/* ── 리사이즈 핸들: 우측 ── */}
       <div
-        ref={attachS.current}
-        onMouseDown={(e) => startResizeMouse(e, 's')}
+        onMouseDown={e => startResize(e, 'right')}
+        onTouchStart={e => startResize(e, 'right')}
         style={{
-          position: 'absolute', bottom: 0, left: 14, right: 14, height: 7,
-          cursor: 's-resize', zIndex: 10, touchAction: 'none',
+          position: 'absolute', top: HANDLE, right: 0, bottom: HANDLE,
+          width: HANDLE, cursor: 'ew-resize', touchAction: 'none',
         }}
       />
-
-      {/* 오른쪽 가장자리 리사이즈 */}
+      {/* ── 리사이즈 핸들: 하단 ── */}
       <div
-        ref={attachE.current}
-        onMouseDown={(e) => startResizeMouse(e, 'e')}
+        onMouseDown={e => startResize(e, 'bottom')}
+        onTouchStart={e => startResize(e, 'bottom')}
         style={{
-          position: 'absolute', top: 14, right: 0, bottom: 14, width: 7,
-          cursor: 'e-resize', zIndex: 10, touchAction: 'none',
+          position: 'absolute', left: HANDLE, right: HANDLE, bottom: 0,
+          height: HANDLE, cursor: 'ns-resize', touchAction: 'none',
         }}
       />
-
-      {/* 오른쪽 하단 코너 리사이즈 */}
+      {/* ── 리사이즈 핸들: 우하단 코너 ── */}
       <div
-        ref={attachSE.current}
-        onMouseDown={(e) => startResizeMouse(e, 'se')}
+        onMouseDown={e => startResize(e, 'corner')}
+        onTouchStart={e => startResize(e, 'corner')}
         style={{
-          position: 'absolute', bottom: 0, right: 0, width: 16, height: 16,
-          cursor: 'se-resize', zIndex: 11, touchAction: 'none',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          position: 'absolute', right: 0, bottom: 0,
+          width: HANDLE * 2, height: HANDLE * 2,
+          cursor: 'nwse-resize', touchAction: 'none',
         }}
       >
-        <svg width="9" height="9" viewBox="0 0 9 9" style={{ opacity: 0.45, display: 'block' }}>
-          <path d="M1 9 L9 1 M5 9 L9 5" stroke="#88aaff" strokeWidth="1.5" strokeLinecap="round"/>
+        {/* 코너 그립 표시 */}
+        <svg width={HANDLE * 2} height={HANDLE * 2} viewBox="0 0 16 16" style={{ opacity: 0.35 }}>
+          <path d="M14 4L4 14M14 8L8 14M14 12L12 14" stroke="#6688bb" strokeWidth="1.5" strokeLinecap="round" />
         </svg>
       </div>
 

@@ -18,11 +18,11 @@ AI가 손글씨를 인식하여 해당 화학 개념의 시뮬레이션 애니�
 
 \- Language: TypeScript
 
-\- AI: Anthropic Claude API (claude-sonnet-4-20250514) — 손글씨 인식 + 화학 파싱
+\- AI/OCR: Google Cloud Vision API — 손글씨 인식 (월 1,000회 무료)
 
 \- 화학 데이터: PubChem API + 자체 분자/반응 데이터베이스
 
-\- OCR 보조: Tesseract.js (브라우저 내 OCR)
+\- 검색: Wikipedia 한국어 API — 화학 개념 검색
 
 \- Deploy: Vercel
 
@@ -34,13 +34,15 @@ AI가 손글씨를 인식하여 해당 화학 개념의 시뮬레이션 애니�
 
 \- 화학식 파서(parser.ts) 구현 완료
 
-\- 시뮬레이션 6종 구현 완료 (molecule, reaction, ionic\_bond, covalent\_bond, electron\_config, acid\_base)
+\- 시뮬레이션 7종 구현 완료 (molecule, reaction, ionic\_bond, covalent\_bond, electron\_config, acid\_base, redox)
 
-\- 산화환원(redox) 시뮬레이션은 플레이스홀더 상태
+\- Google Cloud Vision API 연동 완료 (GoogleVision.ts)
 
-\- GeminiVision.ts → Claude API로 교체 필요 (Gemini 무료 불가)
+\- Wikipedia 한국어 검색 기능 구현 완료 (WikiSearch.ts)
 
-\- Claude API는 브라우저 직접 호출 불가 → 서버 프록시 구현 필요
+\- 플로팅 패널(FloatPanel) 시스템 구현 완료 (드래그 이동, 크기 조절)
+
+\- 수업 보조 패널(AssistantPanel) 구현 완료 (인식 기록 + 요약)
 
 
 
@@ -58,11 +60,19 @@ src/
 
 ├── components/
 
-│   ├── DrawingCanvas.tsx      # 판서 캔버스 (터치/펜 입력, 캡처)
+│   ├── DrawingCanvas.tsx      # 판서 캔버스 (터치/펜 입력, 캡처, 팬 이동)
 
-│   ├── GeminiVision.ts        # ⚠️ Claude API로 교체 예정
+│   ├── GoogleVision.ts        # Google Cloud Vision API OCR 연동
 
-│   └── OCREngine.ts           # Tesseract.js OCR 엔진
+│   ├── AssistantPanel.tsx     # 수업 보조 패널 (인식 기록 + 요약)
+
+│   ├── FloatPanel.tsx         # 드래그 이동/크기 조절 플로팅 패널
+
+│   ├── SelectionOverlay.tsx   # 부분 영역 선택 오버레이
+
+│   ├── SearchResultView.tsx   # Wikipedia 검색 결과 뷰
+
+│   └── WikiSearch.ts          # Wikipedia 한국어 API 검색
 
 ├── chemistry/
 
@@ -72,7 +82,9 @@ src/
 
 │   ├── atomData.ts            # 원소 데이터 (색상, 반지름, 전기음성도 등)
 
-│   ├── moleculeData.ts        # 분자/반응 데이터베이스
+│   ├── moleculeData.ts        # 키워드→시뮬레이션 매핑
+
+│   ├── ionicData.ts           # 이온결합 데이터
 
 │   └── PubChemAPI.ts          # PubChem API 연동
 
@@ -92,7 +104,9 @@ src/
 
 │   ├── ElectronConfigSim.tsx  # 전자 배치 시뮬레이션
 
-│   └── AcidBaseSim.tsx        # 산염기 시뮬레이션
+│   ├── AcidBaseSim.tsx        # 산염기 시뮬레이션
+
+│   └── RedoxSim.tsx           # 산화환원 시뮬레이션
 
 └── assets/
 
@@ -106,7 +120,7 @@ src/
 
 → Canvas를 base64 이미지로 캡처
 
-→ AI API로 전송 (현재 Gemini → Claude로 교체 예정)
+→ Google Cloud Vision API로 OCR 전송
 
 → 인식된 텍스트 반환 (예: "H2O", "2H2+O2→2H2O", "이온결합")
 
@@ -140,9 +154,7 @@ ReactionData: { equation, reactants\[], products\[], type, description }
 
 \## 시뮬레이션 매칭 규칙 (SimulationPanel.tsx)
 
-\- molecule + molecule 데이터 있음 → MoleculeViewer
-
-\- molecule + formula만 있음 → PubChemViewer (PubChem에서 조회)
+\- molecule + formula → PubChemViewer (PubChem에서 조회)
 
 \- ionic\_bond → IonicBondSim
 
@@ -154,7 +166,7 @@ ReactionData: { equation, reactants\[], products\[], type, description }
 
 \- reaction → ReactionSim (equation, reactionType prop 전달)
 
-\- redox → RedoxPlaceholder (미구현)
+\- redox → RedoxSim (Zn + Cu²⁺ 산화환원 애니메이션)
 
 
 
@@ -174,17 +186,15 @@ ReactionData: { equation, reactants\[], products\[], type, description }
 
 \## 주요 과제 (우선순위)
 
-1\. GeminiVision.ts → Claude API 교체 (C 담당)
+1\. ~~GeminiVision.ts → Google Vision API 교체~~ ✅ 완료
 
-2\. 서버 사이드 API 프록시 구현 — Claude는 브라우저 직접 호출 불가 (C 담당)
+2\. ~~redox 시뮬레이션 구현~~ ✅ 완료
 
-3\. redox 시뮬레이션 구현 (B 담당)
+3\. 시뮬레이션 품질 향상 및 추가 (B 담당)
 
-4\. 시뮬레이션 품질 향상 및 추가 (B 담당)
+4\. iPad Safari 최적화 (A 담당)
 
-5\. iPad Safari 최적화 (A 담당)
-
-6\. AI 리포트 및 문서 작성 (D 담당)
+5\. AI 리포트 및 문서 작성 (D 담당)
 
 
 

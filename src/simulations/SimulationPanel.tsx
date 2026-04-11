@@ -26,7 +26,7 @@ export default function SimulationPanel({ result, playing, speed }: Props) {
       return <NoData message={result.description} />;
 
     case 'ionic_bond':
-      return <IonicBondSim playing={playing} speed={speed} />;
+      return <IonicBondSim playing={playing} speed={speed} ionicPair={result.ionicPair} />;
 
     case 'covalent_bond':
       return <CovalentBondSim playing={playing} speed={speed} />;

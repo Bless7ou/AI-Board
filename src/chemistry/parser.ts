@@ -1,5 +1,6 @@
 import type { ParseResult } from './types';
 import { REACTION_KEYWORDS } from './moleculeData';
+import { resolveIonicPair } from './ionicData';
 
 // 화학식 정규화: 유니코드 숫자 → 일반 숫자, 공백 제거
 function normalize(text: string): string {
@@ -35,6 +36,14 @@ function fixOCRErrors(text: string): string {
   return result;
 }
 
+// 전하 표시 헬퍼
+function chargeLabel(charge: number): string {
+  if (charge === 0) return '';
+  const abs = Math.abs(charge);
+  const sign = charge > 0 ? '+' : '-';
+  return abs === 1 ? sign : `${abs}${sign}`;
+}
+
 // 반응식 패턴: A + B → C + D  또는  A + B -> C + D
 const REACTION_PATTERN = /(.+?)\s*(?:→|->|>)\s*(.+)/;
 
@@ -65,7 +74,19 @@ export function parseChemistry(rawText: string): ParseResult {
     };
   }
 
-  // 4. 화학식 감지 → 항상 PubChem으로 조회
+  // 4. 이온결합 화합물 감지 (금속+비금속 조합)
+  const ionicPair = resolveIonicPair(text);
+  if (ionicPair) {
+    return {
+      type: 'ionic_bond',
+      raw: rawText,
+      formula: text,
+      ionicPair,
+      description: `${text} 이온결합: ${ionicPair.cation}${chargeLabel(ionicPair.cationCharge)} + ${ionicPair.anion}${chargeLabel(ionicPair.anionCharge)}`,
+    };
+  }
+
+  // 5. 화학식 감지 → PubChem으로 조회
   const formulaMatches = text.match(FORMULA_PATTERN);
   if (formulaMatches) {
     const formula = formulaMatches[0];

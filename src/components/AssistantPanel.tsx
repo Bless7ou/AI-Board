@@ -34,17 +34,110 @@ const TYPE_LABEL: Record<string, { label: string; color: string }> = {
   unknown:       { label: '기타',   color: '#778899' },
 };
 
-export default function AssistantPanel({ items }: Props) {
-  // 오늘 요약 자동 생성
-  const molecules = items.filter(i => i.type === 'molecule').map(i => i.clean);
-  const concepts  = items.filter(i =>
-    ['ionic_bond','covalent_bond','acid_base','redox','electron_config'].includes(i.type)
-  ).map(i => i.description.split(' ')[0]);
-  const reactions = items.filter(i => i.type === 'reaction').map(i => i.clean);
+// ── 요약 생성 엔진 ──────────────────────────────────────────────────
+// 화학식 → 한국어 이름 매핑
+const FORMULA_NAME: Record<string, string> = {
+  'H₂O':'물', 'NaCl':'염화나트륨(소금)', 'CO₂':'이산화탄소', 'NH₃':'암모니아',
+  'CH₄':'메테인', 'HCl':'염화수소', 'H₂SO₄':'황산', 'NaOH':'수산화나트륨',
+  'CaCO₃':'탄산칼슘', 'Fe₂O₃':'산화철(III)', 'C₆H₁₂O₆':'포도당',
+  'N₂':'질소 기체', 'O₂':'산소 기체', 'H₂':'수소 기체', 'KOH':'수산화칼륨',
+  'MgO':'산화마그네슘', 'CaO':'산화칼슘', 'AgCl':'염화은', 'CuO':'산화구리',
+};
 
-  const uniqueMolecules = [...new Set(molecules)];
-  const uniqueConcepts  = [...new Set(concepts)];
-  const uniqueReactions = [...new Set(reactions)];
+// 주제 키워드로 단원 추정
+const UNIT_MAP: Record<string, string[]> = {
+  '화학 결합':       ['ionic_bond', 'covalent_bond'],
+  '산과 염기':       ['acid_base'],
+  '산화환원 반응':   ['redox'],
+  '화학 반응':       ['reaction'],
+  '원자 구조':       ['electron_config'],
+  '물질의 구성':     ['molecule'],
+};
+
+export function buildSummary(items: AssistantItem[]) {
+  // 고유 항목 추출
+  const uniqueByClean = (type: string) =>
+    [...new Map(items.filter(i => i.type === type).map(i => [i.clean, i])).values()];
+  const conceptTypes = ['ionic_bond','covalent_bond','acid_base','redox','electron_config'] as const;
+
+  const molecules = uniqueByClean('molecule');
+  const reactions = uniqueByClean('reaction');
+  const concepts  = [...new Map(
+    items.filter(i => (conceptTypes as readonly string[]).includes(i.type))
+      .map(i => [i.type, i])
+  ).values()];
+
+  // 1. 수업 주제 추정
+  const typeCounts: Record<string, number> = {};
+  items.forEach(i => { typeCounts[i.type] = (typeCounts[i.type] ?? 0) + 1; });
+  const detectedUnits: string[] = [];
+  for (const [unit, types] of Object.entries(UNIT_MAP)) {
+    if (types.some(t => typeCounts[t])) detectedUnits.push(unit);
+  }
+  const mainTopic = detectedUnits.length > 0
+    ? detectedUnits.join(', ')
+    : '화학 수업';
+
+  // 2. 요약 문단 생성
+  const sentences: string[] = [];
+  if (molecules.length > 0) {
+    const names = molecules.slice(0, 4).map(m => {
+      const name = FORMULA_NAME[m.clean];
+      return name ? `${m.clean}(${name})` : m.clean;
+    });
+    const extra = molecules.length > 4 ? ` 외 ${molecules.length - 4}종` : '';
+    sentences.push(`${names.join(', ')}${extra}의 분자 구조를 학습했습니다.`);
+  }
+  if (reactions.length > 0) {
+    const types = [...new Set(reactions.map(r => r.description.split(':')[0].replace('반응식', '').trim()).filter(Boolean))];
+    if (types.length > 0) {
+      sentences.push(`${types.join(', ')} 등 ${reactions.length}개의 화학 반응을 다루었습니다.`);
+    } else {
+      sentences.push(`${reactions.length}개의 화학 반응식을 다루었습니다.`);
+    }
+  }
+  if (concepts.length > 0) {
+    const labels = concepts.map(c => TYPE_LABEL[c.type]?.label ?? c.type);
+    sentences.push(`핵심 개념으로 ${labels.join(', ')}을(를) 학습했습니다.`);
+  }
+
+  // 3. 연관 관계 분석
+  const connections: string[] = [];
+  const hasIonic = typeCounts['ionic_bond'] > 0;
+  const hasCovalent = typeCounts['covalent_bond'] > 0;
+  const molCleans = molecules.map(m => m.clean);
+  if (hasIonic && molCleans.some(m => ['NaCl','KCl','MgO','CaO','LiF','KF'].includes(m.replace(/[₀-₉]/g, (c) => String('₀₁₂₃₄₅₆₇₈₉'.indexOf(c)))))) {
+    connections.push('이온결합 화합물의 구조와 결합 원리를 함께 학습');
+  }
+  if (hasCovalent && molCleans.some(m => ['H₂O','NH₃','CH₄','CO₂'].includes(m))) {
+    connections.push('공유결합 분자의 구조와 결합 원리를 함께 학습');
+  }
+  if (hasIonic && hasCovalent) {
+    connections.push('이온결합과 공유결합의 차이를 비교 학습');
+  }
+  if (typeCounts['acid_base'] && typeCounts['reaction']) {
+    connections.push('산염기 반응의 이론과 실제 반응식을 연계 학습');
+  }
+
+  // 4. 통계
+  const totalRecognitions = items.length;
+  const uniqueCount = molecules.length + reactions.length + concepts.length;
+  const timeRange = items.length >= 2
+    ? `${items[0].time} ~ ${items[items.length - 1].time}`
+    : items.length === 1 ? items[0].time : '';
+
+  return {
+    mainTopic,
+    sentences,
+    connections,
+    molecules, reactions, concepts,
+    totalRecognitions, uniqueCount, timeRange,
+  };
+}
+
+// ═════════════════════════════════════════════════════════════════════
+export default function AssistantPanel({ items }: Props) {
+  const summary = items.length > 0 ? buildSummary(items) : null;
 
   return (
     <div style={{
@@ -77,7 +170,6 @@ export default function AssistantPanel({ items }: Props) {
       <div style={{ flex: 1, overflowY: 'auto', padding: '10px 10px' }}>
 
         {items.length === 0 ? (
-          /* 초기 상태 */
           <div style={{
             textAlign: 'center', color: '#2a4060',
             padding: '30px 10px', lineHeight: 2,
@@ -88,7 +180,7 @@ export default function AssistantPanel({ items }: Props) {
               수업 내용이 자동으로 정리됩니다
             </div>
           </div>
-        ) : (
+        ) : summary && (
           <>
             {/* 섹션 1: 인식 내용 타임라인 */}
             <Section title="📋 인식 내용">
@@ -128,22 +220,48 @@ export default function AssistantPanel({ items }: Props) {
               })}
             </Section>
 
-            {/* 섹션 2: 오늘의 요약 */}
-            <Section title="📝 오늘의 요약">
-              {uniqueMolecules.length > 0 && (
-                <SummaryRow label="다룬 화학식" items={uniqueMolecules} color="#4499ff" />
-              )}
-              {uniqueReactions.length > 0 && (
-                <SummaryRow label="다룬 반응식" items={uniqueReactions} color="#ff9944" />
-              )}
-              {uniqueConcepts.length > 0 && (
-                <SummaryRow label="다룬 개념" items={uniqueConcepts} color="#aa66ff" />
-              )}
-              {uniqueMolecules.length === 0 && uniqueReactions.length === 0 && uniqueConcepts.length === 0 && (
-                <div style={{ fontSize: '11px', color: '#334466', padding: '4px 0' }}>
-                  인식된 내용이 없습니다
+            {/* 섹션 2: 수업 요약 */}
+            <Section title="📝 수업 요약">
+              {/* 주제 */}
+              <div style={{
+                fontSize: '12px', fontWeight: 700, color: '#88bbff',
+                padding: '6px 10px', marginBottom: '8px',
+                background: 'rgba(40,80,180,0.15)', borderRadius: '8px',
+                border: '1px solid rgba(60,120,240,0.2)',
+              }}>
+                주제: {summary.mainTopic}
+              </div>
+              {/* 요약 문단 */}
+              {summary.sentences.length > 0 && (
+                <div style={{
+                  fontSize: '11px', color: '#8899bb', lineHeight: 1.8,
+                  padding: '4px 0', marginBottom: '8px',
+                }}>
+                  {summary.sentences.map((s, i) => <div key={i}>{s}</div>)}
                 </div>
               )}
+              {/* 연관 관계 */}
+              {summary.connections.length > 0 && (
+                <div style={{ marginBottom: '6px' }}>
+                  {summary.connections.map((c, i) => (
+                    <div key={i} style={{
+                      fontSize: '10px', color: '#66aa88', padding: '2px 0',
+                      display: 'flex', gap: '4px', alignItems: 'center',
+                    }}>
+                      <span style={{ color: '#44aa66' }}>&#x2192;</span> {c}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* 통계 */}
+              <div style={{
+                fontSize: '10px', color: '#445566', marginTop: '6px',
+                display: 'flex', gap: '12px', flexWrap: 'wrap',
+              }}>
+                <span>인식 {summary.totalRecognitions}회</span>
+                <span>고유 항목 {summary.uniqueCount}개</span>
+                {summary.timeRange && <span>{summary.timeRange}</span>}
+              </div>
             </Section>
           </>
         )}
@@ -160,26 +278,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
         marginBottom: '6px', letterSpacing: '0.3px',
       }}>{title}</div>
       {children}
-    </div>
-  );
-}
-
-function SummaryRow({ label, items, color }: { label: string; items: string[]; color: string }) {
-  return (
-    <div style={{ marginBottom: '8px' }}>
-      <div style={{ fontSize: '10px', color: '#33556688', marginBottom: '4px' }}>{label}</div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-        {items.map((item, i) => (
-          <span key={i} style={{
-            fontSize: '12px', padding: '2px 8px',
-            borderRadius: '10px',
-            background: `${color}18`,
-            border: `1px solid ${color}33`,
-            color,
-            fontFamily: 'Courier New, monospace',
-          }}>{item}</span>
-        ))}
-      </div>
     </div>
   );
 }

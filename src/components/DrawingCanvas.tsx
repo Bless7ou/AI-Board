@@ -15,6 +15,7 @@ interface Props {
 export interface DrawingCanvasHandle {
   getImageDataURL:        () => string;
   getCroppedImageDataURL: (x: number, y: number, w: number, h: number, dW: number, dH: number) => string;
+  drawBeautifiedText:     (text: string, x: number, y: number, w: number, h: number, dW: number, dH: number, color: string) => Promise<void>;
   clear: () => void;
   undo:  () => void;
   redo:  () => void;
@@ -23,6 +24,13 @@ export interface DrawingCanvasHandle {
 // ─── Internal types ───────────────────────────────────────────────────────────
 interface Pt     { x: number; y: number }
 interface Stroke { points: Pt[]; color: string; size: number; isEraser: boolean }
+type Seg = { text: string; isSub: boolean };
+interface TextEl {
+  lines: Seg[][];   // 줄별 세그먼트
+  x: number; y: number; w: number; h: number;
+  color: string; fontSize: number;
+}
+interface CanvasSnapshot { strokes: Stroke[]; texts: TextEl[] }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const CW       = 4800;
@@ -69,9 +77,102 @@ function drawStroke(ctx: CanvasRenderingContext2D, s: Stroke) {
   ctx.restore();
 }
 
-function redrawAll(ctx: CanvasRenderingContext2D, strokes: Stroke[]) {
+function redrawAll(ctx: CanvasRenderingContext2D, strokes: Stroke[], texts: TextEl[] = []) {
   drawBg(ctx);
   for (const s of strokes) drawStroke(ctx, s);
+  for (const t of texts) drawTextEl(ctx, t);
+}
+
+// ── Chemical formula parser for display ──────────────────────────────────────
+function parseChemLine(line: string): Seg[] {
+  const result: Seg[] = [];
+  let i = 0;
+  while (i < line.length) {
+    if (/[A-Z]/.test(line[i])) {
+      let sym = line[i];
+      if (i + 1 < line.length && /[a-z]/.test(line[i + 1])) { sym += line[i + 1]; i++; }
+      result.push({ text: sym, isSub: false });
+      i++;
+      let num = '';
+      while (i < line.length && /\d/.test(line[i])) { num += line[i]; i++; }
+      if (num) result.push({ text: num, isSub: true });
+    } else if (line[i] === ')') {
+      result.push({ text: ')', isSub: false });
+      i++;
+      let num = '';
+      while (i < line.length && /\d/.test(line[i])) { num += line[i]; i++; }
+      if (num) result.push({ text: num, isSub: true });
+    } else {
+      result.push({ text: line[i], isSub: false });
+      i++;
+    }
+  }
+  return result;
+}
+
+function parseChemLines(text: string): Seg[][] {
+  const rawLines = text.split(/\n/).map(l => l.trim()).filter(Boolean);
+  return rawLines.map(l => parseChemLine(l));
+}
+
+// ── FontFace API로 직접 폰트 로드 (캔버스에서 가장 확실한 방법) ──
+const PRETTY_FONT = 'NanumPen';
+let fontReady = false;
+const _fontFace = new FontFace(
+  PRETTY_FONT,
+  "url(https://fonts.gstatic.com/s/nanumpenscript/v19/daaDSSYiLGqEal3MjcNs7nCkZLpGao6Gag.woff2)",
+);
+document.fonts.add(_fontFace);
+_fontFace.load().then(() => { fontReady = true; }).catch(() => {});
+
+function fontStr(size: number): string {
+  return `${size}px ${fontReady ? PRETTY_FONT : 'sans-serif'}`;
+}
+
+function drawTextEl(ctx: CanvasRenderingContext2D, el: TextEl) {
+  const { lines, x, y, w, h, color, fontSize } = el;
+  const nLines = lines.length;
+  const subSize = Math.round(fontSize * 0.65);
+  const lineH = fontSize * 1.3;
+  // 전체 텍스트 블록을 영역 중앙에 배치
+  const totalTextH = nLines * lineH;
+  const startY = y + (h - totalTextH) / 2 + fontSize * 0.85;
+
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = color;
+
+  for (let li = 0; li < nLines; li++) {
+    const segs = lines[li];
+    // 이 줄의 전체 너비 측정
+    let lineW = 0;
+    for (const seg of segs) {
+      ctx.font = fontStr(seg.isSub ? subSize : fontSize);
+      lineW += ctx.measureText(seg.text).width;
+    }
+    let drawX = x + (w - lineW) / 2;
+    const drawY = startY + li * lineH;
+
+    for (const seg of segs) {
+      if (seg.isSub) {
+        ctx.font = fontStr(subSize);
+        ctx.fillStyle = color;
+        ctx.fillText(seg.text, drawX, drawY + fontSize * 0.18);
+      } else {
+        ctx.font = fontStr(fontSize);
+        ctx.fillStyle = color;
+        ctx.fillText(seg.text, drawX, drawY);
+      }
+      drawX += ctx.measureText(seg.text).width;
+    }
+  }
+}
+
+function strokeInRegion(s: Stroke, rx: number, ry: number, rw: number, rh: number): boolean {
+  return s.points.some(p => p.x >= rx && p.x <= rx + rw && p.y >= ry && p.y <= ry + rh);
+}
+
+function textHitTest(t: TextEl, px: number, py: number, r: number): boolean {
+  return px + r >= t.x && px - r <= t.x + t.w && py + r >= t.y && py - r <= t.y + t.h;
 }
 
 function ptSegDist(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
@@ -122,7 +223,8 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(
     const drawing  = useRef(false);
     const curStroke = useRef<Stroke | null>(null);
     const strokes   = useRef<Stroke[]>([]);
-    const hist      = useRef<Stroke[][]>([[]]);
+    const texts     = useRef<TextEl[]>([]);
+    const hist      = useRef<CanvasSnapshot[]>([{ strokes: [], texts: [] }]);
     const hIdx      = useRef(0);
 
     // Laser — screen-space coordinates (relative to container, no pan offset)
@@ -150,7 +252,10 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(
 
     const saveHist = useCallback(() => {
       hist.current.splice(hIdx.current + 1);
-      hist.current.push(strokes.current.map(s => ({ ...s, points: [...s.points] })));
+      hist.current.push({
+        strokes: strokes.current.map(s => ({ ...s, points: [...s.points] })),
+        texts:   texts.current.map(t => ({ ...t, lines: t.lines.map(l => [...l]) })),
+      });
       if (hist.current.length > MAX_HIST) hist.current.shift();
       hIdx.current = hist.current.length - 1;
     }, []);
@@ -276,10 +381,22 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(
 
       if (tRef.current === 'eraser' && emRef.current === 'stroke') {
         const r = esRef.current;
-        const before = strokes.current.length;
+        const beforeS = strokes.current.length;
+        const beforeT = texts.current.length;
         strokes.current = strokes.current.filter(s => s.isEraser || !strokeHits(s, pos.x, pos.y, r));
-        if (strokes.current.length !== before) redrawAll(ctx, strokes.current);
+        texts.current = texts.current.filter(t => !textHitTest(t, pos.x, pos.y, r));
+        if (strokes.current.length !== beforeS || texts.current.length !== beforeT) {
+          redrawAll(ctx, strokes.current, texts.current);
+        }
         return;
+      }
+
+      // point 지우개: 텍스트 요소도 제거
+      if (tRef.current === 'eraser') {
+        const r = esRef.current;
+        const beforeT = texts.current.length;
+        texts.current = texts.current.filter(t => !textHitTest(t, pos.x, pos.y, r));
+        if (texts.current.length !== beforeT) redrawAll(ctx, strokes.current, texts.current);
       }
 
       ctx.beginPath();
@@ -455,8 +572,57 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(
         tmp.getContext('2d')!.drawImage(cv, cx, cy, cw, ch, 0, 0, cw, ch);
         return tmp.toDataURL('image/png');
       },
+      drawBeautifiedText: async (text, x, y, w, h, dW, dH, color) => {
+        const cv = cvRef.current, wrap = wrapRef.current;
+        if (!cv || !wrap) return;
+        const ctx = ctx2d();
+        if (!ctx) return;
+        // 폰트가 로드될 때까지 대기
+        if (!fontReady) await _fontFace.load().then(() => { fontReady = true; }).catch(() => {});
+        // display → canvas 좌표 변환
+        const sx = wrap.clientWidth / dW, sy = wrap.clientHeight / dH;
+        const rx = Math.round(x * sx) + panX.current;
+        const ry = Math.round(y * sy) + panY.current;
+        const rw = Math.round(w * sx), rh = Math.round(h * sy);
+        // 영역 내 기존 예쁜 글씨가 있으면 이미 처리된 영역 → 무시
+        const existingText = texts.current.some(t =>
+          t.x < rx + rw && t.x + t.w > rx && t.y < ry + rh && t.y + t.h > ry
+        );
+        if (existingText) return;
+        // 영역 내 획 찾기 → 실제 글씨 바운딩 박스 계산
+        const hitStrokes = strokes.current.filter(s => !s.isEraser && strokeInRegion(s, rx, ry, rw, rh));
+        if (hitStrokes.length === 0) return; // 획이 없으면 무시
+        let inkMinX = Infinity, inkMinY = Infinity, inkMaxX = -Infinity, inkMaxY = -Infinity;
+        for (const s of hitStrokes) {
+          for (const p of s.points) {
+            if (p.x < inkMinX) inkMinX = p.x;
+            if (p.x > inkMaxX) inkMaxX = p.x;
+            if (p.y < inkMinY) inkMinY = p.y;
+            if (p.y > inkMaxY) inkMaxY = p.y;
+          }
+        }
+        const inkH = inkMaxY - inkMinY;
+        const inkW = inkMaxX - inkMinX;
+        // 영역 내 획 제거
+        strokes.current = strokes.current.filter(s => s.isEraser || !strokeInRegion(s, rx, ry, rw, rh));
+        // 텍스트 요소 생성 — 실제 글씨 높이에 맞춤
+        const lines = parseChemLines(text);
+        const nLines = Math.max(1, lines.length);
+        const fontSize = Math.max(28, Math.min((inkH / nLines) * 0.9, 400));
+        const el: TextEl = {
+          lines,
+          x: inkMinX - inkW * 0.05, y: inkMinY - inkH * 0.15,
+          w: inkW * 1.1, h: inkH * 1.3,
+          color, fontSize,
+        };
+        texts.current.push(el);
+        // 전체 다시 그리기 + 히스토리 저장
+        redrawAll(ctx, strokes.current, texts.current);
+        saveHist();
+      },
       clear: () => {
         strokes.current = [];
+        texts.current = [];
         saveHist();
         const ctx = ctx2d();
         if (ctx) drawBg(ctx);
@@ -464,14 +630,18 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(
       undo: () => {
         if (hIdx.current <= 0) return;
         hIdx.current--;
-        strokes.current = hist.current[hIdx.current].map(s => ({ ...s, points: [...s.points] }));
-        const ctx = ctx2d(); if (ctx) redrawAll(ctx, strokes.current);
+        const snap = hist.current[hIdx.current];
+        strokes.current = snap.strokes.map(s => ({ ...s, points: [...s.points] }));
+        texts.current = snap.texts.map(t => ({ ...t, lines: t.lines.map(l => [...l]) }));
+        const ctx = ctx2d(); if (ctx) redrawAll(ctx, strokes.current, texts.current);
       },
       redo: () => {
         if (hIdx.current >= hist.current.length - 1) return;
         hIdx.current++;
-        strokes.current = hist.current[hIdx.current].map(s => ({ ...s, points: [...s.points] }));
-        const ctx = ctx2d(); if (ctx) redrawAll(ctx, strokes.current);
+        const snap = hist.current[hIdx.current];
+        strokes.current = snap.strokes.map(s => ({ ...s, points: [...s.points] }));
+        texts.current = snap.texts.map(t => ({ ...t, lines: t.lines.map(l => [...l]) }));
+        const ctx = ctx2d(); if (ctx) redrawAll(ctx, strokes.current, texts.current);
       },
     }));
 
