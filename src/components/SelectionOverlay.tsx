@@ -11,6 +11,7 @@ export default function SelectionOverlay({ onSelect, onCancel }: Props) {
   const [box, setBox] = useState<Box | null>(null);
   const startRef  = useRef<{ x: number; y: number } | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
+  const cachedRect = useRef<DOMRect | null>(null);
 
   // ESC 키로 취소
   useEffect(() => {
@@ -20,17 +21,19 @@ export default function SelectionOverlay({ onSelect, onCancel }: Props) {
   }, [onCancel]);
 
   const getPos = (clientX: number, clientY: number) => {
-    const rect = overlayRef.current?.getBoundingClientRect();
+    const rect = cachedRect.current ?? overlayRef.current?.getBoundingClientRect();
     if (!rect) return { x: 0, y: 0 };
     return { x: clientX - rect.left, y: clientY - rect.top };
   };
 
   const displaySize = () => {
-    const rect = overlayRef.current?.getBoundingClientRect();
+    const rect = cachedRect.current ?? overlayRef.current?.getBoundingClientRect();
     return { w: rect?.width ?? 1, h: rect?.height ?? 1 };
   };
 
   const onStart = (clientX: number, clientY: number) => {
+    // 드래그 시작 시 rect 캐싱 — iPad 레이아웃 변동 방지
+    cachedRect.current = overlayRef.current?.getBoundingClientRect() ?? null;
     const pos = getPos(clientX, clientY);
     startRef.current = pos;
     setBox({ x: pos.x, y: pos.y, w: 0, h: 0 });
@@ -55,6 +58,7 @@ export default function SelectionOverlay({ onSelect, onCancel }: Props) {
       onCancel();
     }
     startRef.current = null;
+    cachedRect.current = null;
     setBox(null);
   };
 
