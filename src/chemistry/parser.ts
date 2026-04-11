@@ -17,12 +17,49 @@ const FORMULA_PATTERN = /\b([A-Z][a-z]?\d*)+\b/g;
 
 // 알려진 화학식 목록 (OCR 오인식 보정용)
 const FORMULA_ALIASES: Record<string, string> = {
-  'H20': 'H2O', 'H2o': 'H2O', 'h2o': 'H2O',
-  'C02': 'CO2', 'co2': 'CO2',
-  'NH4': 'NH3', 'nacl': 'NaCl', 'NACL': 'NaCl',
-  'n2': 'N2', 'o2': 'O2', 'h2': 'H2',
-  'HCI': 'HCl', 'Hcl': 'HCl',
+  'H20': 'H2O', 'H2o': 'H2O', 'h2o': 'H2O', 'h20': 'H2O',
+  'C02': 'CO2', 'co2': 'CO2', 'Co2': 'CO2', 'cO2': 'CO2',
+  'NH4': 'NH3', 'nh3': 'NH3', 'Nh3': 'NH3',
+  'nacl': 'NaCl', 'NACL': 'NaCl', 'Nacl': 'NaCl', 'naCl': 'NaCl',
+  'n2': 'N2', 'o2': 'O2', 'h2': 'H2', 'f2': 'F2', 'cl2': 'Cl2', 'br2': 'Br2', 'i2': 'I2',
+  'HCI': 'HCl', 'Hcl': 'HCl', 'hcl': 'HCl', 'HcI': 'HCl',
+  'naoh': 'NaOH', 'NAOH': 'NaOH', 'Naoh': 'NaOH', 'NaOh': 'NaOH',
+  'koh': 'KOH', 'Koh': 'KOH',
+  'h2so4': 'H2SO4', 'H2so4': 'H2SO4', 'H2S04': 'H2SO4',
+  'caco3': 'CaCO3', 'CaC03': 'CaCO3',
+  'fe2o3': 'Fe2O3', 'Fe203': 'Fe2O3', 'fe203': 'Fe2O3',
+  'ch4': 'CH4', 'Ch4': 'CH4',
+  'mgo': 'MgO', 'MGO': 'MgO', 'Mgo': 'MgO',
+  'cao': 'CaO', 'CAO': 'CaO', 'Cao': 'CaO',
+  'cuo': 'CuO', 'CUO': 'CuO', 'Cuo': 'CuO',
+  'agcl': 'AgCl', 'AGCL': 'AgCl', 'Agcl': 'AgCl',
+  'kcl': 'KCl', 'KCI': 'KCl', 'Kcl': 'KCl',
 };
+
+// 모든 원소 기호 (2글자 → 1글자 순서로 매칭)
+const ELEMENT_SYMBOLS = [
+  'He','Li','Be','Ne','Na','Mg','Al','Si','Cl','Ar','Ca','Sc','Ti','Cr','Mn',
+  'Fe','Co','Ni','Cu','Zn','Ga','Ge','As','Se','Br','Kr','Rb','Sr','Ag','Sn',
+  'Xe','Ba','Pt','Au','Hg','Pb',
+  'H','B','C','N','O','F','P','S','K','V','I','W',
+];
+
+// 대소문자 무시하고 원소 기호를 올바른 형태로 보정
+function fixElementCase(text: string): string {
+  let result = text;
+  for (const sym of ELEMENT_SYMBOLS) {
+    // 대소문자 무시 매칭 → 올바른 대소문자로 교체
+    // 원소기호 뒤에 숫자/대문자/괄호/끝이 오는 패턴
+    const pattern = new RegExp(
+      sym.length === 2
+        ? `(?<![A-Za-z])${sym[0]}${sym[1]}(?=[0-9A-Z()+\\-→>\\s]|$)`
+        : `(?<![A-Za-z])${sym[0]}(?=[0-9A-Z()+\\-→>\\s]|$)`,
+      'gi'
+    );
+    result = result.replace(pattern, sym);
+  }
+  return result;
+}
 
 function fixOCRErrors(text: string): string {
   let result = text;
@@ -30,9 +67,12 @@ function fixOCRErrors(text: string): string {
   result = result.replace(/H20\b/g, 'H2O');
   result = result.replace(/C02\b/g, 'CO2');
   result = result.replace(/\b0([A-Z])/g, 'O$1'); // 0Na → ONa
+  // 별칭 매칭
   for (const [wrong, right] of Object.entries(FORMULA_ALIASES)) {
     result = result.replace(new RegExp(`\\b${wrong}\\b`, 'g'), right);
   }
+  // 원소 기호 대소문자 보정
+  result = fixElementCase(result);
   return result;
 }
 
@@ -63,15 +103,20 @@ export function parseChemistry(rawText: string): ParseResult {
     }
   }
 
-  // 3. 원소 단독 감지 (전자배치)
-  const singleElement = text.match(/^([A-Z][a-z]?)$/);
-  if (singleElement && singleElement[1].length <= 2) {
-    return {
-      type: 'electron_config',
-      raw: rawText,
-      element: singleElement[1],
-      description: `${singleElement[1]} 원소의 전자 배치`,
-    };
+  // 3. 원소 단독 감지 (전자배치) — 대소문자 유연 처리
+  const singleElement = text.match(/^([A-Za-z]{1,2})$/);
+  if (singleElement) {
+    const input = singleElement[1];
+    // 정확히 매칭되는 원소 기호 찾기
+    const matched = ELEMENT_SYMBOLS.find(s => s.toLowerCase() === input.toLowerCase());
+    if (matched) {
+      return {
+        type: 'electron_config',
+        raw: rawText,
+        element: matched,
+        description: `${matched} 원소의 전자 배치`,
+      };
+    }
   }
 
   // 4. 이온결합 화합물 감지 (금속+비금속 조합)

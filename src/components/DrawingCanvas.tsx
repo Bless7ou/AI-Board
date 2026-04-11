@@ -264,6 +264,9 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(
     // ── helpers ─────────────────────────────────────────────────────────────
     const ctx2d  = () => cvRef.current?.getContext('2d') ?? null;
 
+    // 스트로크 중 rect 캐시 (iPad에서 레이아웃 변동에 의한 좌표 틀어짐 방지)
+    const cachedRect = useRef<DOMRect | null>(null);
+
     const applyPan = useCallback((nx: number, ny: number) => {
       const wrap = wrapRef.current;
       const cv   = cvRef.current;
@@ -273,11 +276,16 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(
       cv.style.transform = `translate(${-panX.current}px,${-panY.current}px)`;
     }, []);
 
+    const getRect = useCallback((): DOMRect | null => {
+      if (cachedRect.current) return cachedRect.current;
+      return wrapRef.current?.getBoundingClientRect() ?? null;
+    }, []);
+
     const toCanvas = useCallback((cx: number, cy: number): Pt => {
-      const r = wrapRef.current?.getBoundingClientRect();
+      const r = getRect();
       if (!r) return { x: 0, y: 0 };
       return { x: cx - r.left + panX.current, y: cy - r.top + panY.current };
-    }, []);
+    }, [getRect]);
 
     const saveHist = useCallback(() => {
       hist.current.splice(hIdx.current + 1);
@@ -369,6 +377,8 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(
     }, []);
 
     const onDown = useCallback((cx: number, cy: number) => {
+      // 스트로크 시작 시 rect 캐싱 — iPad에서 레이아웃 변동 방지
+      cachedRect.current = wrapRef.current?.getBoundingClientRect() ?? null;
       const pos = toCanvas(cx, cy);
       if (tRef.current === 'laser') {
         lasering.current = true;
@@ -491,6 +501,8 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(
     }, [toCanvas, toScreen]);
 
     const onUp = useCallback(() => {
+      // 스트로크 종료 시 rect 캐시 해제
+      cachedRect.current = null;
       if (tRef.current === 'laser') { lasering.current = false; return; }
       if (!drawing.current || !curStroke.current) return;
       drawing.current = false;
