@@ -681,7 +681,7 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(
         if (!ctx) return;
         const ff = fontFamily || DEFAULT_FONT;
         // 폰트가 로드될 때까지 대기
-        await document.fonts.load(`700 16px ${ff}`);
+        await document.fonts.load(`700 16px ${ff}`, text);
         // display → canvas 좌표 변환
         const sx = wrap.clientWidth / dW, sy = wrap.clientHeight / dH;
         const rx = Math.round(x * sx) + panX.current;

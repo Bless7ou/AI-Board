@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ParseResult } from '../chemistry/types';
 import { ATOMS } from '../chemistry/atomData';
 
@@ -277,58 +277,14 @@ function getElemCategory(sym: string): { bg: string; border: string } {
   return { bg: '#1a2030', border: '#334' };
 }
 
-interface MolarResult {
-  mass: number;
-  composition: { symbol: string; count: number; mass: number }[];
-  error?: string;
-}
-
-function calcMolarMass(formula: string): MolarResult {
-  const elements: Record<string, number> = {};
-  function parseGroup(str: string, multiplier: number) {
-    const regex = /([A-Z][a-z]?)(\d*)/g;
-    let match: RegExpExecArray | null;
-    while ((match = regex.exec(str)) !== null) {
-      if (!match[1]) continue;
-      const sym = match[1];
-      const count = match[2] ? parseInt(match[2]) : 1;
-      elements[sym] = (elements[sym] ?? 0) + count * multiplier;
-    }
-  }
-  const remaining = formula.trim();
-  const bracketRegex = /\(([^()]+)\)(\d*)/g;
-  let bracketMatch: RegExpExecArray | null;
-  while ((bracketMatch = bracketRegex.exec(remaining)) !== null) {
-    parseGroup(bracketMatch[1], bracketMatch[2] ? parseInt(bracketMatch[2]) : 1);
-  }
-  parseGroup(remaining.replace(/\([^()]+\)\d*/g, ''), 1);
-
-  const composition: MolarResult['composition'] = [];
-  let total = 0;
-  let hasUnknown = false;
-  for (const [sym, count] of Object.entries(elements)) {
-    const m = ATOMIC_MASS[sym];
-    if (m === undefined) { hasUnknown = true; continue; }
-    const mass = m * count;
-    total += mass;
-    composition.push({ symbol: sym, count, mass });
-  }
-  return {
-    mass: Math.round(total * 100) / 100,
-    composition: composition.sort((a, b) => b.mass - a.mass),
-    error: hasUnknown ? '일부 원소를 인식하지 못했습니다' : undefined,
-  };
-}
-
 // ═══════════════════════════════════════════════════════════════════════
 // 메인 패널
 // ═══════════════════════════════════════════════════════════════════════
 
-type Tool = 'periodic' | 'molar' | 'calc' | 'timer';
+type Tool = 'periodic' | 'calc' | 'timer';
 
 const TOOLS: { id: Tool; icon: string; label: string }[] = [
   { id: 'periodic', icon: '&#x1F9EA;', label: '주기율표' },   // 🧪
-  { id: 'molar',    icon: '&#x2697;',  label: '분자량' },     // ⚗
   { id: 'calc',     icon: '&#x1F5A9;', label: '계산기' },     // 🖩
   { id: 'timer',    icon: '&#x23F1;',  label: '타이머' },     // ⏱
 ];
@@ -392,7 +348,6 @@ export default function AssistantPanel({ items: _items }: Props) {
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px' }}>
         {activeTool === null && <ToolHome />}
         {activeTool === 'periodic' && <PeriodicTool />}
-        {activeTool === 'molar' && <MolarTool />}
         {activeTool === 'calc' && <CalcTool />}
         {activeTool === 'timer' && <TimerTool />}
       </div>
@@ -527,120 +482,6 @@ function PeriodicTool() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 2. 분자량 계산기
-// ═══════════════════════════════════════════════════════════════════════
-
-function MolarTool() {
-  const [input, setInput] = useState('');
-  const result = useMemo(() => input.trim() ? calcMolarMass(input) : null, [input]);
-  const presets = ['H2O', 'NaCl', 'CO2', 'H2SO4', 'Ca(OH)2', 'C6H12O6', 'NH3', 'Fe2O3'];
-
-  return (
-    <>
-      <div style={{ marginBottom: '10px' }}>
-        <div style={{ fontSize: '11px', color: '#5577aa', marginBottom: '6px', fontWeight: 600 }}>
-          화학식 입력
-        </div>
-        <input type="text" value={input} onChange={e => setInput(e.target.value)}
-          placeholder="예: H2O, Ca(OH)2"
-          style={{
-            width: '100%', boxSizing: 'border-box', padding: '8px 10px',
-            fontSize: '14px', fontWeight: 600, fontFamily: 'Courier New, monospace',
-            background: 'rgba(15,25,50,0.8)', border: '1px solid rgba(60,120,220,0.3)',
-            borderRadius: '8px', color: '#c8e0ff', outline: 'none',
-          }}
-        />
-      </div>
-
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '12px' }}>
-        {presets.map(p => (
-          <button key={p} onClick={() => setInput(p)} style={{
-            padding: '3px 8px', border: '1px solid rgba(60,120,180,0.25)',
-            borderRadius: '12px', cursor: 'pointer',
-            fontSize: '10px', fontFamily: 'Courier New, monospace',
-            background: input === p ? 'rgba(40,80,180,0.3)' : 'rgba(20,30,60,0.5)',
-            color: input === p ? '#88bbff' : '#556677', transition: 'all 0.12s',
-          }}>{p}</button>
-        ))}
-      </div>
-
-      {result ? (
-        <div style={{
-          background: 'rgba(20,40,80,0.4)', border: '1px solid rgba(60,120,220,0.3)',
-          borderRadius: '8px', padding: '12px',
-        }}>
-          {result.error && (
-            <div style={{
-              fontSize: '10px', color: '#cc6644', marginBottom: '6px',
-              padding: '4px 8px', background: 'rgba(200,80,40,0.1)', borderRadius: '4px',
-            }}>{result.error}</div>
-          )}
-          <div style={{
-            textAlign: 'center', marginBottom: '12px', padding: '10px',
-            background: 'rgba(10,20,50,0.5)', borderRadius: '8px',
-          }}>
-            <div style={{ fontSize: '10px', color: '#556677', marginBottom: '4px' }}>분자량 (g/mol)</div>
-            <div style={{ fontSize: '26px', fontWeight: 700, color: '#88ccff', fontFamily: 'Courier New, monospace' }}>
-              {result.mass}
-            </div>
-            <div style={{ fontSize: '10px', color: '#445566', marginTop: '2px' }}>{toCleanChem(input)}</div>
-          </div>
-          {result.composition.length > 0 && (
-            <div>
-              <div style={{ fontSize: '10px', color: '#5577aa', marginBottom: '6px', fontWeight: 600 }}>원소 구성</div>
-              {result.composition.map(c => {
-                const pct = result.mass > 0 ? (c.mass / result.mass * 100) : 0;
-                const ad = ATOMS[c.symbol];
-                return (
-                  <div key={c.symbol} style={{
-                    display: 'flex', alignItems: 'center', gap: '8px',
-                    padding: '4px 0', borderBottom: '1px solid rgba(40,70,110,0.15)',
-                  }}>
-                    <div style={{
-                      width: 24, height: 24, borderRadius: '4px',
-                      background: `${ad?.color ?? '#666'}22`, border: `1px solid ${ad?.color ?? '#666'}44`,
-                      display: 'flex', justifyContent: 'center', alignItems: 'center',
-                      fontSize: '10px', fontWeight: 700, color: ad?.color ?? '#888',
-                    }}>{c.symbol}</div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ fontSize: '11px', color: '#88aacc', fontWeight: 600 }}>
-                          {ad?.name ?? c.symbol} x{c.count}
-                        </span>
-                        <span style={{ fontSize: '10px', color: '#556677', fontFamily: 'monospace' }}>
-                          {c.mass.toFixed(2)}
-                        </span>
-                      </div>
-                      <div style={{
-                        height: '3px', borderRadius: '2px', background: 'rgba(20,30,60,0.5)',
-                        marginTop: '3px', overflow: 'hidden',
-                      }}>
-                        <div style={{
-                          width: `${pct}%`, height: '100%',
-                          background: ad?.color ?? '#4488cc', borderRadius: '2px',
-                        }} />
-                      </div>
-                      <div style={{ fontSize: '8px', color: '#445566', marginTop: '1px' }}>{pct.toFixed(1)}%</div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      ) : (
-        <div style={{ textAlign: 'center', color: '#2a4060', padding: '24px 8px', lineHeight: 2 }}>
-          <div style={{ fontSize: '24px', marginBottom: '8px', opacity: 0.5 }}>&#x2697;</div>
-          <div style={{ fontSize: '11px' }}>
-            화학식을 입력하면<br />
-            <strong style={{ color: '#446688' }}>분자량</strong>과 <strong style={{ color: '#446688' }}>원소 구성</strong>을 계산합니다
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
 // ═══════════════════════════════════════════════════════════════════════
 // 3. 일반 계산기
 // ═══════════════════════════════════════════════════════════════════════

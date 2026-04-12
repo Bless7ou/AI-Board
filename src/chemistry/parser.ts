@@ -1,6 +1,7 @@
 import type { ParseResult } from './types';
 import { REACTION_KEYWORDS } from './moleculeData';
 import { resolveIonicPair } from './ionicData';
+import { ATOMS } from './atomData';
 
 // 화학식 정규화: 유니코드 숫자 → 일반 숫자, 공백 제거
 function normalize(text: string): string {
@@ -131,10 +132,34 @@ export function parseChemistry(rawText: string): ParseResult {
     };
   }
 
-  // 5. 화학식 감지 → PubChem으로 조회
+  // 5. 화학식 감지
   const formulaMatches = text.match(FORMULA_PATTERN);
   if (formulaMatches) {
     const formula = formulaMatches[0];
+
+    // 5-a. 내장 원소이면 전자배치 시뮬레이션 우선
+    if (ATOMS[formula]) {
+      return {
+        type: 'electron_config',
+        raw: rawText,
+        element: formula,
+        description: `${formula} 원소의 전자 배치`,
+      };
+    }
+
+    // 5-b. 내장 이온결합 화합물이면 이온결합 시뮬레이션 우선
+    const ionicFallback = resolveIonicPair(formula);
+    if (ionicFallback) {
+      return {
+        type: 'ionic_bond',
+        raw: rawText,
+        formula,
+        ionicPair: ionicFallback,
+        description: `${formula} 이온결합: ${ionicFallback.cation}${chargeLabel(ionicFallback.cationCharge)} + ${ionicFallback.anion}${chargeLabel(ionicFallback.anionCharge)}`,
+      };
+    }
+
+    // 5-c. 그 외 → PubChem 조회
     return {
       type: 'molecule',
       raw: rawText,
