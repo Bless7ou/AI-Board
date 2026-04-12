@@ -10,6 +10,10 @@ interface Props {
   placeholder?: string;
   width?: number;
   height?: number;
+  /** 닫기 버튼 숨김 (모달 내부 임베드 시) */
+  hideClose?: boolean;
+  /** 외부 컨테이너 배경/테두리/그림자 제거 (임베드 모드) */
+  embedded?: boolean;
 }
 
 const BG = '#0e1a2a';
@@ -18,6 +22,8 @@ export default function MiniCanvas({
   onRecognize, onClose,
   placeholder = '여기에 화학식을 쓰세요',
   width = 240, height = 100,
+  hideClose = false,
+  embedded = false,
 }: Props) {
   const cvRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
@@ -108,15 +114,42 @@ export default function MiniCanvas({
     lastPt.current = null;
   };
 
+  // ── 전처리: 색상 반전 + 3배 확대 (OCR 정확도 향상) ──
+  const preprocessForOCR = (cv: HTMLCanvasElement): string => {
+    const scale = 3;
+    const out = document.createElement('canvas');
+    out.width = cv.width * scale;
+    out.height = cv.height * scale;
+    const octx = out.getContext('2d')!;
+
+    // 흰 배경
+    octx.fillStyle = '#ffffff';
+    octx.fillRect(0, 0, out.width, out.height);
+
+    // 원본을 확대해서 그리기
+    octx.drawImage(cv, 0, 0, out.width, out.height);
+
+    // 픽셀 반전: 밝은 글씨 → 검정, 어두운 배경 → 흰색 + 이진화
+    const outData = octx.getImageData(0, 0, out.width, out.height);
+    const d = outData.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const brightness = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
+      const val = brightness > 100 ? 0 : 255; // 밝은 픽셀(글씨) → 검정
+      d[i] = d[i + 1] = d[i + 2] = val;
+      d[i + 3] = 255;
+    }
+    octx.putImageData(outData, 0, 0);
+    return out.toDataURL('image/png');
+  };
+
   // ── 인식 ──
   const handleRecognize = async () => {
     const cv = cvRef.current;
     if (!cv || !hasStrokes) return;
-    // 로컬 키 없어도 서버 프록시로 동작 가능하므로 체크 제거
 
     setRecognizing(true); setError('');
     try {
-      const dataURL = cv.toDataURL('image/png');
+      const dataURL = preprocessForOCR(cv);
       const text = await recognizeHandwriting(dataURL);
       if (!text.trim()) { setError('인식 실패 — 더 크게 써보세요'); return; }
       onRecognize(text.trim());
@@ -130,12 +163,12 @@ export default function MiniCanvas({
   return (
     <div
       style={{
-        background: 'rgba(8,14,30,0.97)',
-        border: '1px solid rgba(60,120,240,0.35)',
-        borderRadius: 12, padding: 10,
-        boxShadow: '0 8px 28px rgba(0,0,0,0.7)',
+        background: embedded ? 'transparent' : 'rgba(8,14,30,0.97)',
+        border: embedded ? 'none' : '1px solid rgba(60,120,240,0.35)',
+        borderRadius: 12, padding: embedded ? 0 : 10,
+        boxShadow: embedded ? 'none' : '0 8px 28px rgba(0,0,0,0.7)',
         display: 'flex', flexDirection: 'column', gap: 8,
-        width: width + 20,
+        width: embedded ? '100%' : width + 20,
       }}
       onMouseDown={e => e.stopPropagation()}
       onClick={e => e.stopPropagation()}
@@ -149,6 +182,7 @@ export default function MiniCanvas({
           cursor: 'crosshair',
           touchAction: 'none',
           display: 'block',
+          width: embedded ? '100%' : undefined,
         }}
         onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={() => onUp()}
         onTouchStart={onDown} onTouchMove={onMove} onTouchEnd={onUp} onTouchCancel={() => onUp()}
@@ -190,18 +224,20 @@ export default function MiniCanvas({
         >
           지우기
         </button>
-        <button
-          onClick={onClose}
-          style={{
-            padding: '5px 10px',
-            background: 'rgba(30,40,60,0.6)',
-            border: '1px solid rgba(60,80,120,0.4)',
-            borderRadius: 7, color: '#5577aa',
-            fontSize: 11, cursor: 'pointer',
-          }}
-        >
-          닫기
-        </button>
+        {!hideClose && (
+          <button
+            onClick={onClose}
+            style={{
+              padding: '5px 10px',
+              background: 'rgba(30,40,60,0.6)',
+              border: '1px solid rgba(60,80,120,0.4)',
+              borderRadius: 7, color: '#5577aa',
+              fontSize: 11, cursor: 'pointer',
+            }}
+          >
+            닫기
+          </button>
+        )}
       </div>
     </div>
   );

@@ -8,16 +8,26 @@ export function setApiKey(key: string) {
   localStorage.setItem('google_vision_key', key);
 }
 
-// 이미지 압축 (600×400 이하)
-function resizeImage(dataURL: string, maxW = 600, maxH = 400): Promise<string> {
+// 이미지 압축 (1200×800 이하 — 해상도가 너무 낮으면 OCR 정확도 저하)
+function resizeImage(dataURL: string, maxW = 1200, maxH = 800): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
       const scale = Math.min(1, maxW / img.width, maxH / img.height);
       const canvas = document.createElement('canvas');
-      canvas.width = Math.round(img.width * scale);
-      canvas.height = Math.round(img.height * scale);
-      canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d')!;
+      // 흰 배경 보장
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+      // 대비 강화 — 글씨를 더 선명하게
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.drawImage(canvas, 0, 0);
+      ctx.globalCompositeOperation = 'source-over';
       resolve(canvas.toDataURL('image/png'));
     };
     img.src = dataURL;
@@ -84,5 +94,28 @@ export async function recognizeHandwriting(imageDataURL: string): Promise<string
 
   const raw = r?.fullTextAnnotation?.text ?? '';
   return raw.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/** 줄바꿈을 유지한 인식 (글씨 보정용) */
+export async function recognizeHandwritingMultiline(imageDataURL: string): Promise<string> {
+  const resized = await resizeImage(imageDataURL);
+  const base64 = resized.split(',')[1];
+  if (!base64) throw new Error('이미지 데이터가 없습니다.');
+
+  const localKey = getApiKey();
+  const json = (localKey
+    ? await callDirect(base64, localKey)
+    : await callProxy(base64)) as {
+    responses?: Array<{
+      fullTextAnnotation?: { text: string };
+      error?: { message: string };
+    }>;
+  };
+
+  const r = json.responses?.[0];
+  if (r?.error) throw new Error(`Google Vision 오류: ${r.error.message}`);
+
+  const raw = r?.fullTextAnnotation?.text ?? '';
+  return raw.replace(/[ \t]+/g, ' ').trim();
 }
 
