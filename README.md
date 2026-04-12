@@ -1,73 +1,75 @@
-# React + TypeScript + Vite
+# ChemBoard — AI 수업 어시스턴트
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+교사가 iPad에 화학식을 판서하면, AI가 실시간으로 인식하여 시뮬레이션 애니메이션을 자동 생성하는 전자칠판 연동 화학 교육 도구입니다.
 
-Currently, two official plugins are available:
+🔗 **[https://aiboard-sandy.vercel.app](https://aiboard-sandy.vercel.app)**
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+---
 
-## React Compiler
+## 주요 기능
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **손글씨 OCR** — Google Cloud Vision API로 화학식·반응식·키워드 인식
+- **자동 시뮬레이션** — 분자 구조 / 반응식 / 이온결합 / 공유결합 / 전자배치 / 산염기 / 산화환원 7종
+- **실시간 제어** — 재생·일시정지, 속도 조절(0.25×~3×), 드래그 플로팅 패널
+- **수업 보조 패널** — 인식 기록 타임라인 + 수업 내용 자동 요약
+- **미니 캔버스** — 칠판을 지우지 않고 소형 창으로 빠르게 추가 인식
 
-## Expanding the ESLint configuration
+---
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## 사용 방법
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+### 1. 판서
+캔버스 영역에 화학식, 반응식, 또는 키워드를 손글씨로 작성합니다.
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```
+예) H2O    2H2 + O2 → 2H2O    이온결합    NaCl
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### 2. 인식
+- **전체 인식** — 캔버스 전체를 OCR로 분석
+- **부분 인식** — 원하는 영역만 드래그하여 선택 후 인식
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### 3. 시뮬레이션 확인
+인식 결과에 따라 오른쪽 패널에 애니메이션이 자동 실행됩니다.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+| 입력 예시 | 실행 시뮬레이션 |
+|-----------|----------------|
+| `H2O`, `CO2`, `NaCl` | 분자 구조 (3D 데이터) |
+| `2H2 + O2 → 2H2O` | 반응식 애니메이션 |
+| `이온결합` | 이온결합 시뮬레이션 |
+| `공유결합` | 공유결합 시뮬레이션 |
+| `전자배치` | 전자 배치도 |
+| `산염기` | 산염기 반응 |
+| `산화환원` | 산화환원 반응 |
+
+### 4. 수업 보조 패널
+우측 하단 패널에서 수업 중 인식된 내용을 시간순으로 확인하고, 수업 종료 후 요약 내용을 클립보드로 복사할 수 있습니다.
+
+---
+
+## 기술 스택
+
+- **Frontend** — React 19 + TypeScript + Vite
+- **OCR** — Google Cloud Vision API
+- **화학 데이터** — PubChem API
+- **배포** — Vercel
+
+---
+
+## 로컬 개발 환경 설정
+
+```bash
+git clone https://github.com/Bless7ou/AI-Board.git
+cd AI-Board
+npm install
+
+# 환경변수 설정
+cp .env.example .env.local
+# .env.local에 VITE_GOOGLE_VISION_KEY 입력
+
+npm run dev
 ```
+
+---
+
+*2026 KIT 바이브코딩 공모전 출품작 — 팀 네얼간이*
