@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { ATOMS, ELECTRON_CONFIG } from '../chemistry/atomData';
+import MiniCanvas from '../components/MiniCanvas';
 
 interface Props {
   element: string;
@@ -7,14 +8,55 @@ interface Props {
   speed: number;
 }
 
-export default function ElectronConfigSim({ element, playing, speed }: Props) {
+const ELEMENT_PRESETS: { label: string; symbol: string }[] = [
+  { label: 'H  수소',  symbol: 'H' },
+  { label: 'C  탄소',  symbol: 'C' },
+  { label: 'N  질소',  symbol: 'N' },
+  { label: 'O  산소',  symbol: 'O' },
+  { label: 'Na 나트륨', symbol: 'Na' },
+  { label: 'Mg 마그네슘', symbol: 'Mg' },
+  { label: 'Al 알루미늄', symbol: 'Al' },
+  { label: 'Cl 염소',  symbol: 'Cl' },
+  { label: 'K  칼륨',  symbol: 'K' },
+  { label: 'Ca 칼슘',  symbol: 'Ca' },
+  { label: 'Fe 철',    symbol: 'Fe' },
+  { label: 'Cu 구리',  symbol: 'Cu' },
+];
+
+export default function ElectronConfigSim({ element: initialElement, playing, speed }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animRef = useRef<number>(0);
   const tRef = useRef(0);
 
+  const [element, setElement] = useState(initialElement);
+  const [showPicker, setShowPicker] = useState(false);
+  const [inputError, setInputError] = useState('');
+
+  useEffect(() => { setElement(initialElement); }, [initialElement]);
+
   useEffect(() => {
     tRef.current = 0;
   }, [element]);
+
+  const handleSelect = useCallback((sym: string) => {
+    setElement(sym);
+    setShowPicker(false);
+    setInputError('');
+    tRef.current = 0;
+  }, []);
+
+  const handleMiniRecognize = useCallback((text: string) => {
+    const clean = text.trim().replace(/\s+/g, '');
+    // 첫 글자 대문자 + 나머지 소문자로 정규화
+    const normalized = clean.charAt(0).toUpperCase() + clean.slice(1).toLowerCase();
+    if (ATOMS[normalized] && ELECTRON_CONFIG[normalized]) {
+      handleSelect(normalized);
+    } else if (ATOMS[clean] && ELECTRON_CONFIG[clean]) {
+      handleSelect(clean);
+    } else {
+      setInputError(`"${text}" — 등록된 원소가 아닙니다`);
+    }
+  }, [handleSelect]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -129,7 +171,69 @@ export default function ElectronConfigSim({ element, playing, speed }: Props) {
   }, [element, playing, speed]);
 
   return (
-    <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
+    <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+      <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
+
+      {/* 원소 선택 드롭다운 */}
+      <div style={{ position: 'absolute', top: 8, left: 8, zIndex: 5 }}>
+        <button
+          onClick={() => { setShowPicker(v => !v); setInputError(''); }}
+          style={{
+            background: showPicker ? 'rgba(60,120,255,0.4)' : 'rgba(10,20,50,0.7)',
+            border: '1px solid rgba(80,150,255,0.4)',
+            borderRadius: 8, padding: '4px 12px',
+            color: '#aaccff', fontSize: 12, fontWeight: 700,
+            cursor: 'pointer', transition: 'background 0.15s',
+          }}
+        >
+          {element} ({ATOMS[element]?.name ?? '?'}) ▾
+        </button>
+
+        {showPicker && (
+          <div style={{ position: 'absolute', top: 34, left: 0, zIndex: 10 }}>
+            <MiniCanvas
+              onRecognize={handleMiniRecognize}
+              onClose={() => { setShowPicker(false); setInputError(''); }}
+              placeholder="원소 기호를 쓰세요 (예: Na)"
+              width={230}
+              height={90}
+            />
+            {inputError && (
+              <div style={{ fontSize: 10, color: '#ff7766', textAlign: 'center', padding: '4px 0', marginTop: -4 }}>
+                {inputError}
+              </div>
+            )}
+            <div style={{
+              marginTop: 6, padding: '6px 10px',
+              background: 'rgba(8,14,30,0.95)',
+              border: '1px solid rgba(60,120,240,0.25)',
+              borderRadius: 10,
+              display: 'flex', flexWrap: 'wrap', gap: 4,
+              width: 250,
+            }}>
+              <div style={{ fontSize: 9, color: '#445566', width: '100%', marginBottom: 2 }}>또는 선택:</div>
+              {ELEMENT_PRESETS.map(p => (
+                <button
+                  key={p.symbol}
+                  onClick={() => handleSelect(p.symbol)}
+                  style={{
+                    background: element === p.symbol ? 'rgba(60,120,255,0.35)' : 'rgba(20,40,80,0.5)',
+                    border: `1px solid ${element === p.symbol ? 'rgba(80,160,255,0.6)' : 'rgba(40,70,130,0.4)'}`,
+                    borderRadius: 7, padding: '4px 8px',
+                    color: element === p.symbol ? '#aaccff' : '#5577aa',
+                    fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                    fontFamily: 'Courier New, monospace',
+                    transition: 'background 0.12s, color 0.12s',
+                  }}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
