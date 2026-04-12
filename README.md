@@ -1,4 +1,4 @@
-# ChemBoard — AI 수업 어시스턴트
+# Board Reader — AI 수업 어시스턴트
 
 교사가 iPad나 전자칠판에 판서하면, AI가 실시간으로 인식하여 시뮬레이션 애니메이션을 자동 생성하는 **AI 기반 수업 보조 시스템**입니다.
 
@@ -23,7 +23,7 @@
 
 ### 시연 영상
 
-https://github.com/Bless7ou/AI-Board/releases/download/v1.0.0/chemboard-demo.mp4
+[![Board Reader 시연 영상](https://img.youtube.com/vi/ihjsQyVKtA0/0.jpg)](https://youtu.be/ihjsQyVKtA0)
 
 ### 1. 판서
 캔버스 영역에 화학식, 반응식, 또는 키워드를 손글씨로 작성합니다.
