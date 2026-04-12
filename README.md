@@ -1,125 +1,73 @@
-# Board Reader — AI 수업 어시스턴트
+# React + TypeScript + Vite
 
-교사가 iPad나 전자칠판에 판서하면, AI가 실시간으로 인식하여 시뮬레이션 애니메이션을 자동 생성하는 **AI 기반 수업 보조 시스템**입니다.
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
-> 현재 버전은 시각화 수요가 가장 명확한 **화학**을 첫 번째 도메인으로 구현한 프로토타입입니다.
-> 판서 → 자동 시각화 파이프라인은 특정 과목에 종속되지 않아, 향후 수학(함수·그래프), 물리(역학·전기회로), 생물(세포·DNA 구조) 등 다양한 교과목으로 확장할 계획입니다.
+Currently, two official plugins are available:
 
-🔗 **[https://aiboard-sandy.vercel.app](https://aiboard-sandy.vercel.app)**
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
 
----
+## React Compiler
 
-## 주요 기능
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
-- **손글씨 OCR + 자동 보정** — Google Cloud Vision API로 화학식·반응식·키워드 인식, 흘려 쓴 글씨도 자동으로 정규화 (예: H20 → H₂O, HCI → HCl)
-- **자동 시뮬레이션** — 분자 구조 / 반응식 / 이온결합 / 공유결합 / 전자배치 / 산염기 / 산화환원 7종
-- **실시간 제어** — 재생·일시정지, 속도 조절(0.25×~3×), 드래그 플로팅 패널
-- **수업 도구** — 스톱워치 / 계산기 / 주기율표를 별도 앱 전환 없이 수업 중 바로 사용 가능
-- **수업 요약 패널** — 인식 기록 타임라인 + 수업 내용 자동 요약 및 클립보드 복사
-- **미니 캔버스** — 칠판을 지우지 않고 소형 창으로 빠르게 추가 인식
+## Expanding the ESLint configuration
 
----
+If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
 
-## 사용 방법
+```js
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      // Other configs...
 
-### 시연 영상
+      // Remove tseslint.configs.recommended and replace with this
+      tseslint.configs.recommendedTypeChecked,
+      // Alternatively, use this for stricter rules
+      tseslint.configs.strictTypeChecked,
+      // Optionally, add this for stylistic rules
+      tseslint.configs.stylisticTypeChecked,
 
-[![Board Reader 시연 영상](https://img.youtube.com/vi/ihjsQyVKtA0/0.jpg)](https://youtu.be/ihjsQyVKtA0)
-
-▶ https://youtu.be/ihjsQyVKtA0
-
----
-
-### 1) 판서 인식
-
-캔버스에 화학식, 반응식, 키워드를 입력한 뒤  
-**[전체 인식]** 또는 **[부분 인식]** 버튼을 누르면 자동으로 텍스트를 인식합니다.
-
----
-
-### 2) 글씨체 자동 보정
-
-손글씨로 입력한 내용을 깔끔한 글씨체로 자동 변환해줍니다.  
-악필이어도 판서 내용이 보기 좋게 정리되어 화면에 표시됩니다.
-
----
-
-### 3) 시뮬레이션
-
-인식된 내용에 따라 적절한 시뮬레이션이 자동으로 실행됩니다.
-
-아래 예시를 입력해보세요:
-
-| 입력 예시 | 실행 시뮬레이션 |
-|-----------|----------------|
-| `H` `Na` `Fe` `Ca` | 전자 배치도 (예: H(1s¹), Na(1s²2s²2p⁶3s¹)) |
-| `H2O` `CO2` `NH3` `CH4` | 분자 구조 (PubChem 데이터 자동 조회) |
-| `2H2 + O2 → 2H2O` | 반응식 애니메이션 |
-| `NaCl` `MgO` `CaCl2` | 이온결합 |
-| `O2` `N2` `CH4` | 공유결합 |
-| `HCl + NaOH` | 산·염기 반응 |
-| `Zn + CuSO4` | 산화·환원 반응 |
-
----
-
-### 4) 시뮬레이션 제어
-
-- ▶ 재생 / ⏸ 일시정지
-- 속도 조절 (0.25× ~ 3×)
-- 시뮬레이션 창 드래그 이동 가능
-- 시뮬레이션별 프리셋 제공 (원소 12종 / 분자 8종 / 반응식 다수)
-
----
-
-### 5) 수업 요약 패널
-
-수업 중 인식된 내용이 시간순으로 자동 기록됩니다.
-
-수업 종료 후  
-👉 **[요약 복사]** 버튼 클릭 시 전체 내용 클립보드 복사 가능
-
----
-
-### 6) 미니 캔버스
-
-칠판 내용을 유지한 상태에서  
-작은 입력 창을 띄워 화학식을 추가 입력하거나 시뮬레이션을 즉시 변경할 수 있습니다.
-
----
-
-### 7) 수업 도구
-
-앱 전환 없이 바로 사용할 수 있는 도구를 제공합니다:
-
-- 🕐 **스톱워치** — 실험 및 수업 타이머
-- 🔢 **계산기** — 몰질량, 농도 등 계산
-- 🧪 **주기율표** — 원소 정보 빠른 조회
-
----
-
-## 기술 스택
-
-- **Frontend** — React 19 + TypeScript + Vite
-- **OCR** — Google Cloud Vision API (DOCUMENT_TEXT_DETECTION)
-- **화학 데이터** — PubChem API + 자체 원소·분자 데이터베이스 (1~6주기)
-- **배포** — Vercel (서버리스 프록시 포함)
-
----
-
-## 로컬 개발 환경 설정
-
-```bash
-git clone https://github.com/Bless7ou/Board-Reader.git
-cd Board-Reader
-npm install
-
-# 환경변수 설정
-cp .env.example .env.local
-# .env.local에 VITE_GOOGLE_VISION_KEY 입력
-
-npm run dev
+      // Other configs...
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+      // other options...
+    },
+  },
+])
 ```
 
----
+You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
 
-*2026 KIT 바이브코딩 공모전 출품작 — 팀 네얼간이*
+```js
+// eslint.config.js
+import reactX from 'eslint-plugin-react-x'
+import reactDom from 'eslint-plugin-react-dom'
+
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      // Other configs...
+      // Enable lint rules for React
+      reactX.configs['recommended-typescript'],
+      // Enable lint rules for React DOM
+      reactDom.configs.recommended,
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+      // other options...
+    },
+  },
+])
+```
