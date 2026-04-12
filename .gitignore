@@ -24,3 +24,4 @@ dist-ssr
 *.sw?
 .vite
 .mcp.json
+.vercel
